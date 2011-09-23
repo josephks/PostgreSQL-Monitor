@@ -17,13 +17,12 @@ object MyBuild extends Build{
 
   lazy val JavaNet = "Java.net Maven2 Repository" at "http://download.java.net/maven/2/"
 
-  lazy val root = Project("root", file(".")) settings(
+   lazy val root = Project("root", file(".")) settings(
 
     libraryDependencies ++= Seq(
-
       "net.liftweb" %% "lift-webkit" % liftVersion % "compile",
       "net.liftweb" %% "lift-mapper" % liftVersion % "compile",
-      "org.mortbay.jetty" % "jetty" % "6.1.26" % "test",
+      "org.mortbay.jetty" % "jetty" % "6.1.26" % "jetty",
       "junit" % "junit" % "4.7" % "test",
       "ch.qos.logback" % "logback-classic" % "0.9.26",
       "org.scala-tools.testing" %% "specs" % "1.6.9" % "test",
