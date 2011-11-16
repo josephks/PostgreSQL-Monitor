@@ -5,7 +5,7 @@ import Keys._
 
 object MyBuild extends Build{
 
-  val liftVersion = "2.4-M4"
+  val liftVersion = "2.4-M5"
 
 //I'm not sure if these comments are still valid for sbt 0.10.x:
   // uncomment the following if you want to use the snapshot repo
