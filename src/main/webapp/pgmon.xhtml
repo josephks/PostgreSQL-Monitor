@@ -8,14 +8,23 @@
 <meta http-equiv="pragma" content="no-cache" />
 
 <style type="text/css">
-td
+
+   td, th
 {
 min-width:20px;
-} 
+ border: 2px groove;
+}
 
+th{
+text-align: center;
+}
 table.bpstable tr td{
 text-align:right;
+min-width:100px;
 }
+
+
+
 </style>
 </head>
 
@@ -26,7 +35,7 @@ text-align:right;
 <h3>Bandwith</h3>
 <div lift="comet?type=PgBandwithActor">
 
- <table class="bpstable"><tr> <th>Read bps</th>
+ <table class="bpstable"><tbody><tr> <th>Read bps</th>
 <th>Total Write bps</th>
 <th>Checkpoint Write bps (good)</th>
 <th>Cleaning Write bps</th>
@@ -38,7 +47,7 @@ text-align:right;
 <td><div class="cleanwritebps" /></td>
 <td><div class="backendwritebps" /></td>
 <td><div class="timenow" /></td>
-</tr>    </table>
+</tr> </tbody>   </table>
 </div>
 
 
