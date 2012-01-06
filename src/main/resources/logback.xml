@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<configuration scan="true">
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d [%t] %-5p %logger{25} - %m%n</pattern>
+    </encoder>
+  </appender>
+
+<logger name="net.liftweb.util.TimeHelpers" level="WARN" />
+    <logger name="net.liftweb.db.ProtoDBVendor" level="INFO" />
+
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>

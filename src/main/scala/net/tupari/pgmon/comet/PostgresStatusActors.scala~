@@ -1,0 +1,293 @@
+package com.xtenit.admin2.comet
+
+import _root_.java.util.Date
+
+import _root_.net.liftweb.util._
+import _root_.net.liftweb.common.Box
+import    _root_.net.liftweb.util.TimeHelpers._
+import net.liftweb.common.{Logger, Full}
+import net.liftweb.http.js.JsCmds.{Replace, SetHtml}
+import xml.{TopScope, NodeSeq, Text}
+import net.liftweb.http.{SHtml, S, CometActor}
+import net.liftweb.http.js.JsCmds
+import scala.xml.Node
+
+import com.xtenit.control._
+
+object Common{
+
+    val ds = com.xtenit.beans.ServletConnection.getDataServices();
+
+  //returns an either (tuple, error string)
+    def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ Option[Array[String]], Array[Array[java.lang.Object]]]] = {
+      if (q.trim().toLowerCase().startsWith("show ")){
+        val query = new com.xtenit.control.SimplePgQuery(q,false);
+        query.setHost(target_host);
+        return Either.cond (true,  ( None, ds.doQuery(query)) , null);
+      }
+      
+        val query = new CursorPgQuery(q, null, null);
+        query.setHost(target_host);
+        query.setUseVacuumUser(true); //so we can see running vacuums
+        val curNameOpt = Option(cur_name)
+        query.setCursorName(curNameOpt.getOrElse( "postgres_status_bean"));
+        query.setPoolTag(curNameOpt.getOrElse( "postgres_status_bean") );
+        query.setIgnoreConnLimit(true);
+        val getter = ds.getChunker(query);
+
+        if (getter != null){
+          try{
+            val oaa = getter.getChunk(1000); //should get them all
+          
+            Either.cond (oaa != null, (Some(getter.getHeaders), oaa) , this.getClass() + ": query returned null: "+q)
+          }finally{
+            getter.exit();
+          }
+        }else{
+          Either.cond (false, null, this.getClass() + ": could not get getter for: "+q)
+        }
+    }
+}
+
+class TableCreator(keys: List[String], data: List[List[java.lang.Object]]) extends Logger{
+  //val nodeBuf = new scala.xml.NodeBuffer 
+
+  val keysToIgnore: List[String] = List()
+
+  protected def getHeaderRow( ): Seq[Node] = {
+    <tr> { keys.filterNot(key => keysToIgnore.contains(key)).map( key => getHeaderNodes( key ) ) } </tr>
+  }
+  protected def getHeaderNodes(key: String ): Seq[Node] = {
+    <th> { key } </th>
+  }
+  var rowodd = true
+  protected def shouldFlipRowOdd :Boolean = {
+    return true
+  }
+  protected def getDataRow(oa: List[java.lang.Object]): Node = {
+    if (shouldFlipRowOdd)
+      rowodd = ! rowodd
+    val zip = keys.zip(oa)
+    <tr> { (zip map ( (tuple: Tuple2[String,java.lang.Object] ) => tuple match {
+      case (key, v) if ! keysToIgnore.contains(key)  => getDataNodes(key, v, zip.toMap)
+      case _ => NodeSeq.Empty
+    } )).flatMap(x => x) }</tr> %
+    new scala.xml.UnprefixedAttribute ( "class" ,
+                                       if(rowodd){ "RowOdd" } else { "RowEven"} ,
+                                       scala.xml.Null)
+  }
+  protected def getDataNodes(key: String, obj: Object, row: Map[String, Object] ): Seq[scala.xml.Node] = {
+    <td> { obj.toString } </td>
+  }
+
+  def getTableContents: NodeSeq = {
+    val nodeBuf = new scala.xml.NodeBuffer 
+    nodeBuf ++=     getHeaderRow( )
+    nodeBuf ++= data.map( oa =>  getDataRow(oa))
+    //info("getTableContents: returning "+ nodeBuf)
+    nodeBuf
+  }
+}
+
+class PgMonCometSlonyStatusActor  extends CometActor with Logger{
+
+  var tableId = "slonytable"
+
+  override protected def dontCacheRendering: Boolean = true
+
+  def render = {
+    <table id={ tableId } > { getTableContents } </table>
+  }
+
+  def getTableContents = {
+    Common.getData("select schemaname from pg_tables where tablename = 'sl_log_1'") match{
+      case Right( (keys, oaa) ) =>
+        val sql = oaa.map( oa => oa(0) ) map ( schema => "select "+schema+".slonyversion( ) AS version, * from "+schema+".sl_status" ) mkString(" UNION ALL ")
+      Common.getData(sql) match{
+        case Right( (keysOpt, oaa) ) =>
+          keysOpt.map(keys => <tr> { keys.map( key => <th> { key }</th> ) } </tr>).getOrElse( NodeSeq.Empty) ++
+        oaa.map( oa => <tr>  { oa.map( o => <td> { o.toString } </td> ) } </tr>   )
+        case Left(errstr) =>
+          <tr><td class="error">{errstr}</td></tr>
+      }
+      case Left(errstr) =>
+        <tr><td class="error">{errstr}</td></tr>
+    }
+  }
+  override def lowPriority : PartialFunction[Any, Unit] = {
+    case _ =>
+      partialUpdate(SetHtml(tableId, getTableContents))
+  }
+
+}//class
+
+class PgMonCometBackendsActor  extends CometActor with Logger{
+
+  var tableId = "backendstable"
+
+  override protected def dontCacheRendering: Boolean = true
+
+
+  def render = {
+    info("render called")
+    <table id={ tableId } > { getTableContents } </table>
+  }
+
+  private val RUNNING_TIME = "running_time"
+
+  class MyTableCreator(keys: List[String], data: List[List[java.lang.Object]]) extends TableCreator(keys, data){
+    override val keysToIgnore = List("running_time")
+
+    override protected def getHeaderNodes(key: String ): Seq[Node] = {
+      val ans = new scala.xml.NodeBuffer 
+      ans ++= <th> { key } </th>
+      if (key == "query_start"){
+        ans ++= <th>running time</th>
+      }
+      ans
+    }
+    override  protected def getDataNodes(key: String, obj: Object, row: Map[String, Object] ): Seq[Node]={
+      val ans = new scala.xml.NodeBuffer 
+      ans ++=  <td> { Option(obj).getOrElse("").toString } </td> %
+       { key match {
+        case "waiting" if (obj == true) =>
+          new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
+        case _ =>
+          scala.xml.Null
+      } }
+      lazy val sql = row("current_query");
+      if (key == "query_start"){
+        if (sql == null || sql == "<IDLE>")
+          ans ++= <td></td>
+        else
+          ans ++= <td>{ row("running_time") } </td>
+      }
+      ans
+    }
+  }//class
+  def getTableContents: NodeSeq = {
+    info("getTableContents starting")
+    val data = Common.getData("select *, (now() - query_start)::text AS running_time  from pg_stat_activity ")
+    data match{
+      case Right( (Some(keys), oaa) ) =>
+       new MyTableCreator(keys.toList, oaa.toList.map( arr => arr.toList)).getTableContents
+      case Left(errstr) =>
+        <tr><td class="error">errstr</td></tr>
+      case _ =>
+        <tr><td class="error">code error in { this.getClass }</td></tr>
+    }
+  }
+  def getTableContentsDELETE = {
+    val data = Common.getData("select *, (current_timestamp - query_start) AS running_time  from pg_stat_activity ")
+    info(" data is: " + data)
+    data match{
+      case Right( (Some(keys), oaa) ) =>
+        val oaa2 = oaa.map( oa => oa.toList).toList
+         info(" keys: "+keys+" toList: "+keys.toList + " oaa2: "+oaa2+" filtered: " + keys.toList.filter( _ != RUNNING_TIME) )
+        <tr attr="headers"> { keys.filter( _ != RUNNING_TIME) map( key =>
+          <th> { key }</th> ++
+             key match {
+               //case "query_start" => <th>running time</th> //put the running time col right after query_start
+               case _ =>  NodeSeq.Empty
+             } ) } </tr> ++
+      oaa.map( oa => <tr > {
+        val zippedMap = keys.zip(oa).toMap
+        zippedMap map( tuple => tuple match {
+          case (RUNNING_TIME, _) => //don't show the running time here
+            case (k,v) =>
+              <td> { v } </td> % {
+                if (k == "waiting" && v == True)
+                  new scala.xml.UnprefixedAttribute ( "bgcolor" , "red" , scala.xml.Null)
+                else
+                  scala.xml.Null
+              } ++
+          k match {
+            //case "query_start" => <td> { 
+             // zippedMap(RUNNING_TIME) } </td>
+            case _ =>  NodeSeq.Empty
+          } //key match
+          case x =>
+            throw new IllegalStateException("How did I get "+x+" instead of (k,v) ?")
+        })//zippedMap map tuple match
+      }
+              </tr>  )
+        case Left(errstr) =>
+          <tr><td class="error">errstr</td></tr>
+              case _ =>
+          <tr><td class="error">code error in { this.getClass }</td></tr>
+      }
+  }
+
+  override def lowPriority : PartialFunction[Any, Unit] = {
+    case _ =>
+      partialUpdate(SetHtml(tableId, getTableContents))
+  }
+}//class
+
+class PgMonCometLocksActor  extends CometActor with Logger{
+
+  var tableId = "lockstable"
+
+   override protected def dontCacheRendering: Boolean = true
+
+  def render = {
+    <table id={ tableId } > { getTableContents } </table>
+  }
+
+  class MyTableCreator(keys: List[String], data: List[List[java.lang.Object]], lockedRels: Set[String]) extends TableCreator(keys, data){
+    override val keysToIgnore = List("running_time")
+
+    override  protected def getDataNodes(key: String, obj: Object, row: Map[String, Object] ): Seq[Node]={
+       <td> {
+      key match {
+        case "pid" => <a href={ "#" + obj}>{ obj }</a>
+        case "relname" if row("locktype") == "table" =>
+          <a href={ "pgact.jsp?table="+ obj}> { obj }</a>
+        case _ =>
+          Option(obj).getOrElse("").toString }
+       } </td> % 
+      { key match {
+        case "granted" if (obj == false) =>
+          new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
+        case "relname" if lockedRels.contains( row("relname").asInstanceOf[String] ) && row("granted") == true => 
+          new scala.xml.UnprefixedAttribute ("bgcolor", "lime",   scala.xml.Null)
+        case _ =>
+          scala.xml.Null
+      }
+     }
+    }
+  }//class
+
+  def getTableContents = {
+    Common.getData("SELECT (select relname from pg_catalog.pg_class where pg_catalog.pg_class.oid = relation) as relname, * FROM pg_locks ORDER BY pid, relation;") match{
+      case Right( (Some(keys), oaa) ) =>
+        object MapWithNotGranted{
+          def unapply(list: List[_]) = {
+            val zip = keys.zip(list).toMap
+            if (zip("granted") == false)
+              Option(zip)
+            else
+              None
+          }
+        }
+      val oaa2 =  oaa.toList.map( arr => arr.toList)
+      //doesn't work:
+      //val lockedRelations: Set[String] = oaa2 collect ( {case MapWithNotGranted(km) => km("relation").asInstanceOf[String]}).toSet
+      //error: missing parameter type for expanded function The argument types of an anonymous function must be fully known. (SLS 8.5)
+      val lockRelList = oaa2 collect ( {case MapWithNotGranted(km) => km("relname").asInstanceOf[String]})
+      val lockedRelations = lockRelList.toSet
+
+      new MyTableCreator(keys.toList, oaa.toList.map( arr => arr.toList), lockedRelations).getTableContents
+
+      case Left(errstr) =>
+        <tr><td class="error">errstr</td></tr>
+      case _ =>
+        <tr><td class="error">code error in { this.getClass }</td></tr>
+    }
+  }
+  override def lowPriority : PartialFunction[Any, Unit] = {
+    case _ =>
+      partialUpdate(SetHtml(tableId, getTableContents))
+  }
+
+}//class

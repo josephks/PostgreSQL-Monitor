@@ -1,0 +1,53 @@
+<lift:children>
+
+            <div class="lift:surround?with=default;at=content">
+                <head><title>Postgres Status (servername goes here)</title>
+<link rel="stylesheet" type="text/css" href="/styles.css" />
+<link rel="stylesheet" type="text/css" href="/colors.css" />
+<meta http-equiv="expires" content="tues, 01 jan 1980 00:00:00 gmt" />
+<meta http-equiv="pragma" content="no-cache" />
+
+<style type="text/css">
+td
+{
+min-width:20px;
+} 
+
+table.bpstable tr td{
+text-align:right;
+}
+</style>
+</head>
+
+                     
+<h3>Slony status</h3>
+<lift:comet type="PgMonCometSlonyStatusActor" />
+
+<h3>Bandwith</h3>
+<div lift="comet?type=PgBandwithActor">
+
+ <table class="bpstable"><tr> <th>Read bps</th>
+<th>Total Write bps</th>
+<th>Checkpoint Write bps (good)</th>
+<th>Cleaning Write bps</th>
+<th>Backend Write bps (bad)</th><th>as of</th>
+</tr>
+<tr><td> <div class="totalreadbps" /></td>
+<td><div class="totalwritebps" /></td>
+<td><div class="checkpointwritebps" /></td>
+<td><div class="cleanwritebps" /></td>
+<td><div class="backendwritebps" /></td>
+<td><div class="timenow" /></td>
+</tr>    </table>
+</div>
+
+<h3>Postgres backends</h3>
+<lift:PgStatusPage.backendsTable />
+<!--lift:comet type="PgMonCometBackendsActor" /-->
+
+
+<h3>Locks</h3>
+             <span id="lockstable" />
+
+ </div>
+</lift:children>

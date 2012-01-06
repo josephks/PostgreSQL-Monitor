@@ -27,8 +27,11 @@ object MyBuild extends Build{
       "ch.qos.logback" % "logback-classic" % "0.9.26",
       "org.scala-tools.testing" %% "specs" % "1.6.9" % "test",
       "com.h2database" % "h2" % "1.2.147",
+                 "postgresql" % "postgresql" % "9.1-901.jdbc4" ,
+
       "org.specs2" %% "specs2" % "1.6.1",
       "org.specs2" %% "specs2-scalaz-core" % "6.0.1" % "test"
+
 
       //  "org.scala-tools.testing" %% "scalacheck" % "1.9", 
       //  "org.scala-tools.testing" % "test-interface" % "0.5", 

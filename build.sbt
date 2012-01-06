@@ -1,5 +1,5 @@
 /** Project */
-name := "Lift SBT Template"
+name := "PostgreSQL Monitor"
 
 version := "0.1"
 
