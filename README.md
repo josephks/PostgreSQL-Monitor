@@ -15,8 +15,8 @@ This is in a very very raw state.  On the roadmap:
 There is no authentication as of now.  Access control must be done by the container.
 
 NOTE: the default config connecets to the "template1" database.  If you try to create a new database while the monitor is running you will get an error like 
+
 ```
 createdb: database creation failed: ERROR:  source database "template1" is being accessed by other users
 DETAIL:  There are 7 other session(s) using the database.
-
 ```  
