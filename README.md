@@ -7,10 +7,10 @@ To get a war file use the "package-war" command, not the "package" command.
 
 This is in a very very raw state.  On the roadmap:
 
-* Put in stylesheets, basic html fixes
+* Pretty up the UI, it's ugly
 * Allow connections to more than just the default database
 * Put in the size page
-* Turn on auto-reloading
+* Get disk level bandwith from /proc files
 
 There is no authentication as of now.  Access control must be done by the container.
 

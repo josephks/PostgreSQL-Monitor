@@ -15,17 +15,19 @@ import scala.xml.Node
 object Common{
 
   //returns an either (tuple, error string)
-    def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
-      try{
+  def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
+    try{
       Right(net.liftweb.db.DB.performQuery(q)   )
-      }catch{
-         //I don't know why but a query that returns no data is considered an error
-case ex: org.postgresql.util.PSQLException  if (ex.getMessage.contains("No results were returned by the query."))   =>
-                   Right(Nil, Nil)
+    }catch{
+      //I don't know why but a query that returns no data is considered an error
+      case ex: org.postgresql.util.PSQLException  if (ex.getMessage.contains("No results were returned by the query."))   =>
+        Right(Nil, Nil)
 
-      }
-      //todo: catch exception, return Left
     }
+    //todo: catch exception, return Left
+  }
+
+
 }
 
 class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
@@ -51,16 +53,16 @@ class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
       case (key, v) if ! keysToIgnore.contains(key)  => getDataNodes(key, v, zip.toMap)
       case _ => NodeSeq.Empty
     } )).flatMap(x => x) }</tr> %
-    new scala.xml.UnprefixedAttribute ( "class" ,
-                                       if(rowodd){ "RowOdd" } else { "RowEven"} ,
-                                       scala.xml.Null)
+      new scala.xml.UnprefixedAttribute ( "class" ,
+        if(rowodd){ "RowOdd" } else { "RowEven"} ,
+        scala.xml.Null)
   }
   protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[scala.xml.Node] = {
     <td> { obj.toString } </td>
   }
 
   def getTableContents: NodeSeq = {
-    val nodeBuf = new scala.xml.NodeBuffer 
+    val nodeBuf = new scala.xml.NodeBuffer
     nodeBuf ++=     getHeaderRow( )
     nodeBuf ++= data.map( oa =>  getDataRow(oa))
     //info("getTableContents: returning "+ nodeBuf)
@@ -80,17 +82,17 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
   def getTableContents = {
     Common.getData("select schemaname from pg_tables where tablename = 'sl_log_1'") match{
-      case Right( (Nil, Nil)) =>
+      case Right( (_, Nil)) =>
         <tr><td>No slony installation detected</td></tr>
       case Right( (_, lla) ) =>
         val sql = lla.map( la => la(0) ) map ( schema => "select "+schema+".slonyversion( ) AS version, * from "+schema+".sl_status" ) mkString(" UNION ALL ")
-      Common.getData(sql) match{
-        case Right( (keys, oaa) ) =>
-          <tr> { keys.map( key => <th> { key }</th> ) } </tr> ++
-        oaa.map( oa => <tr>  { oa.map( o => <td> { o.toString } </td> ) } </tr>   )
-        case Left(errstr) =>
-          <tr><td class="error">{errstr}</td></tr>
-      }
+        Common.getData(sql) match{
+          case Right( (keys, oaa) ) =>
+            <tr> { keys.map( key => <th> { key }</th> ) } </tr> ++
+              oaa.map( oa => <tr>  { oa.map( o => <td> { o.toString } </td> ) } </tr>   )
+          case Left(errstr) =>
+            <tr><td class="error">{errstr}</td></tr>
+        }
       case Left(errstr) =>
         <tr><td class="error">{errstr}</td></tr>
     }
@@ -106,6 +108,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
 
   var tableId = "backendstable"
   val lockTableId = "lockstable"
+  var refreshOn = false
 
   override protected def dontCacheRendering: Boolean = true
 
@@ -115,7 +118,12 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     //Schedule.schedule(this, "update", 1L)
 
     ".backendstbl" #> <table  > <tbody id={ tableId }>{ getTableContents } </tbody></table> &
-    ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>
+      ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>  &
+      ".reloadbox" #>   SHtml.ajaxCheckbox (false, { (b: Boolean) =>
+        refreshOn = b
+        if (b) this ! "update"
+      })
+
   }
 
   private val RUNNING_TIME = "running_time"
@@ -124,7 +132,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     override val keysToIgnore = List("running_time")
 
     override protected def getHeaderNodes(key: String ): Seq[Node] = {
-      val ans = new scala.xml.NodeBuffer 
+      val ans = new scala.xml.NodeBuffer
       ans ++= <th> { key } </th>
       if (key == "query_start"){
         ans ++= <th>running time</th>
@@ -132,14 +140,14 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
       ans
     }
     override  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[Node]={
-      val ans = new scala.xml.NodeBuffer 
+      val ans = new scala.xml.NodeBuffer
       ans ++=  <td> { Option(obj).getOrElse("").toString } </td> %
-       { key match {
-        case "waiting" if (obj == true) =>
-          new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
-        case _ =>
-          scala.xml.Null
-      } }
+        { key match {
+          case "waiting" if (obj == true) =>
+            new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
+          case _ =>
+            scala.xml.Null
+        } }
       lazy val sql = row("current_query");
       if (key == "query_start"){
         if (sql == null || sql == "<IDLE>")
@@ -155,7 +163,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     val data = Common.getData("select *, (now() - query_start)::text AS running_time  from pg_stat_activity ")
     data match{
       case Right( (keys, oaa) ) =>
-       new MyTableCreator(keys, oaa).getTableContents
+        new MyTableCreator(keys, oaa).getTableContents
       case Left(errstr) =>
         <tr><td class="error">errstr</td></tr>
       case _ =>
@@ -215,7 +223,9 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
   override def lowPriority : PartialFunction[Any, Unit] = {
     case "update" =>
       partialUpdate(SetHtml(tableId, getTableContents))
-       partialUpdate(SetHtml(lockTableId, getLocksTableContents))
+      partialUpdate(SetHtml(lockTableId, getLocksTableContents))
+      if (refreshOn  )
+        Schedule.schedule(this, "update", 2500L)
 
   }
 }//class
