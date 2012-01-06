@@ -1,7 +1,0 @@
-package com.xtenit.admin2.comet
-
-case class TurnRefreshOn(b: Boolean)
-/*
-object  TurnRefreshOn{
-  def apply(b: Boolean) = new TurnRefreshOn(b)
-}*/
