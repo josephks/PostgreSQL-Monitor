@@ -112,8 +112,8 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
 
   def render = {
     info("render called")
-    <table id={ tableId } > { getTableContents } </table>
-      <table id={ lockTableId } > { getLocksTableContents } </table>
+    Schedule.schedule(this, "update", 1L)
+    <table id={ tableId } >  </table>
   }
 
   private val RUNNING_TIME = "running_time"
@@ -211,9 +211,9 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     }
   }
   override def lowPriority : PartialFunction[Any, Unit] = {
-    case _ =>
+    case "update" =>
       partialUpdate(SetHtml(tableId, getTableContents))
-       partialUpdate(SetHtml(lockTableId, getTableContents))
+       partialUpdate(SetHtml(lockTableId, getLocksTableContents))
 
   }
 }//class
