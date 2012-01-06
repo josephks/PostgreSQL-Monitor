@@ -81,7 +81,7 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
   def getTableContents = {
     Common.getData("select schemaname from pg_tables where tablename = 'sl_log_1'") match{
       case Right( (Nil, Nil)) =>
-        <span>No slony installation detected</span>
+        <tr><td>No slony installation detected</td></tr>
       case Right( (_, lla) ) =>
         val sql = lla.map( la => la(0) ) map ( schema => "select "+schema+".slonyversion( ) AS version, * from "+schema+".sl_status" ) mkString(" UNION ALL ")
       Common.getData(sql) match{
@@ -111,9 +111,11 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
 
 
   def render = {
-    info("render called")
-    Schedule.schedule(this, "update", 1L)
-    <table id={ tableId } >  </table>
+    debug("render called")
+    //Schedule.schedule(this, "update", 1L)
+
+    ".backendstbl" #> <table  > <tbody id={ tableId }>{ getTableContents } </tbody></table> &
+    ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>
   }
 
   private val RUNNING_TIME = "running_time"
