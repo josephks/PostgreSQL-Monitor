@@ -17,12 +17,13 @@ class BwDataPoint(oa: List[Any], block_size: Int){
   val buffers_clean = oa(3).asInstanceOf[java.lang.Number].longValue
   val buffers_backend = oa(4).asInstanceOf[java.lang.Number].longValue
 
+  private def getBytesPerSec(bytes:Int,  last: BwDataPoint) =   block_size * 1000 * bytes / (timestamp.getTime - last.timestamp.getTime)
   def getBytesWritten =  buffers_checkpoint + buffers_clean + buffers_backend
-  def getBpsWrittenSince(last: BwDataPoint) = block_size * 1000 * (getBytesWritten - last.getBytesWritten) / (timestamp.getTime() - last.timestamp.getTime())
-  def getBpsReadSince(last: BwDataPoint) = block_size * 1000 * (buffers_alloc - last.buffers_alloc) / (timestamp.getTime() - last.timestamp.getTime())
-  def getChptWSince(last: BwDataPoint) = block_size * 1000 * (buffers_checkpoint - last.buffers_checkpoint) / (timestamp.getTime() - last.timestamp.getTime())
-  def getCleanWSince(last: BwDataPoint) = block_size * 1000 * (buffers_clean - last.buffers_clean) / (timestamp.getTime() - last.timestamp.getTime())
-  def getBkndWSince(last: BwDataPoint) = block_size * 1000 * (buffers_backend - last.buffers_backend) / (timestamp.getTime() - last.timestamp.getTime())
+  def getBpsWrittenSince(last: BwDataPoint) = getBytesPerSec (getBytesWritten - last.getBytesWritten, last)
+  def getBpsReadSince(last: BwDataPoint) = getBytesPerSec(buffers_alloc - last.buffers_alloc, last)
+  def getChptWSince(last: BwDataPoint) = getBytesPerSecblock_size(buffers_checkpoint - last.buffers_checkpoint, last)
+  def getCleanWSince(last: BwDataPoint) = getBytesPerSecblock_size(buffers_clean - last.buffers_clean, last)
+  def getBkndWSince(last: BwDataPoint) = getBytesPerSecblock_size (buffers_backend - last.buffers_backend, last)
 }
 
 class PgBandwithActor  extends CometActor with Logger{
@@ -34,7 +35,6 @@ class PgBandwithActor  extends CometActor with Logger{
 
    private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend from pg_stat_bgwriter";
    private var tableId = "pgbwtbl"
-   private var rowId = tableId + "row"
 
   private  val numCols = "2"
   
@@ -88,7 +88,7 @@ private val numFormat = java.text.NumberFormat.getInstance
        prevDataPoint match {
 	 case null =>
 	   //first time, do nothing
-           info("first datapnt, doing nothing")
+           debug("first datapnt, doing nothing")
 	 case _ =>
            for(span <- spanList){
              val text =  span match{
@@ -115,12 +115,12 @@ private val numFormat = java.text.NumberFormat.getInstance
    }
  }
 
-  Schedule.schedule(this, "update", 1L) 
+  Schedule.schedule(this, "update", 1L)
 
-override def lowPriority : PartialFunction[Any, Unit] = {
-  case "update" =>
-    //partialUpdate(Replace(rowId, getTableRow))
-   doUpdate
-    Schedule.schedule(this, "update", 2500L) 
+  override def lowPriority : PartialFunction[Any, Unit] = {
+    case "update" =>
+      //partialUpdate(Replace(rowId, getTableRow))
+      doUpdate
+      Schedule.schedule(this, "update", 2500L)
   }
 }
