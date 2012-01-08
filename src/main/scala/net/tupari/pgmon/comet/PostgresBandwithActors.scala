@@ -17,13 +17,13 @@ class BwDataPoint(oa: List[Any], block_size: Int){
   val buffers_clean = oa(3).asInstanceOf[java.lang.Number].longValue
   val buffers_backend = oa(4).asInstanceOf[java.lang.Number].longValue
 
-  private def getBytesPerSec(bytes:Int,  last: BwDataPoint) =   block_size * 1000 * bytes / (timestamp.getTime - last.timestamp.getTime)
+  private def getBytesPerSec(bytes:Long,  last: BwDataPoint) =   block_size * 1000 * bytes / (timestamp.getTime - last.timestamp.getTime)
   def getBytesWritten =  buffers_checkpoint + buffers_clean + buffers_backend
   def getBpsWrittenSince(last: BwDataPoint) = getBytesPerSec (getBytesWritten - last.getBytesWritten, last)
   def getBpsReadSince(last: BwDataPoint) = getBytesPerSec(buffers_alloc - last.buffers_alloc, last)
-  def getChptWSince(last: BwDataPoint) = getBytesPerSecblock_size(buffers_checkpoint - last.buffers_checkpoint, last)
-  def getCleanWSince(last: BwDataPoint) = getBytesPerSecblock_size(buffers_clean - last.buffers_clean, last)
-  def getBkndWSince(last: BwDataPoint) = getBytesPerSecblock_size (buffers_backend - last.buffers_backend, last)
+  def getChptWSince(last: BwDataPoint) = getBytesPerSec(buffers_checkpoint - last.buffers_checkpoint, last)
+  def getCleanWSince(last: BwDataPoint) = getBytesPerSec(buffers_clean - last.buffers_clean, last)
+  def getBkndWSince(last: BwDataPoint) = getBytesPerSec(buffers_backend - last.buffers_backend, last)
 }
 
 class PgBandwithActor  extends CometActor with Logger{
