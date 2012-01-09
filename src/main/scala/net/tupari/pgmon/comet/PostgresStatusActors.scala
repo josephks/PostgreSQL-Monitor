@@ -140,12 +140,15 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         }}
     }
   }//class  LocksTableCreator
-
+  /** Problem: the relname subselect only works if the connection is to the same db that pgmon is connected to.
+   We need to figure out a way to tell what db number we're connected to so we only do the subquery for our db.
+   Beyond that figure out a way to connect to the other dbs to get the relnames out of them. */
   private val locksSql = "SELECT (select relname from pg_catalog.pg_class where pg_catalog.pg_class.oid = relation) as relname, * FROM pg_locks ORDER BY pid, relation;"
 
   private def getLocksTableContents = {
     Common.getData(locksSql) match{
       case Right( (keys, oaa) ) =>
+
         object MapWithNotGranted{
           def unapply(list: List[_]) = {
             val zip = keys.zip(list).toMap
@@ -158,7 +161,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         //doesn't work:
         //val lockedRelations: Set[String] = oaa2 collect ( {case MapWithNotGranted(km) => km("relation").asInstanceOf[String]}).toSet
         //error: missing parameter type for expanded function The argument types of an anonymous function must be fully known. (SLS 8.5)
-        val lockRelList = oaa collect ( {case MapWithNotGranted(km) => km("relname").asInstanceOf[String]})
+        val lockRelList = oaa collect ( {case MapWithNotGranted(km) if (km("relname") != null) => km("relname").asInstanceOf[String]})
         val lockedRelations = lockRelList.toSet
 
         new LocksTableCreator(keys, oaa, lockedRelations).getTableContents
