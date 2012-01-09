@@ -11,64 +11,7 @@ import xml.{TopScope, NodeSeq, Text}
 import net.liftweb.http.{SHtml, S, CometActor}
 import net.liftweb.http.js.JsCmds
 import scala.xml.Node
-
-object Common{
-
-  //returns an either (tuple, error string)
-  def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
-    try{
-      Right(net.liftweb.db.DB.performQuery(q)   )
-    }catch{
-      //I don't know why but a query that returns no data is considered an error
-      case ex: org.postgresql.util.PSQLException  if (ex.getMessage.contains("No results were returned by the query."))   =>
-        Right(Nil, Nil)
-
-    }
-    //todo: catch exception, return Left
-  }
-
-
-}
-
-class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
-  //val nodeBuf = new scala.xml.NodeBuffer 
-
-  val keysToIgnore: List[String] = List()
-
-  protected def getHeaderRow( ): Seq[Node] = {
-    <tr> { keys.filterNot(key => keysToIgnore.contains(key)).map( key => getHeaderNodes( key ) ) } </tr>
-  }
-  protected def getHeaderNodes(key: String ): Seq[Node] = {
-    <th> { key } </th>
-  }
-  var rowodd = true
-  protected def shouldFlipRowOdd :Boolean = {
-    return true
-  }
-  protected def getDataRow(oa: List[Any]): Node = {
-    if (shouldFlipRowOdd)
-      rowodd = ! rowodd
-    val zip = keys.zip(oa)
-    <tr> { (zip map ( (tuple: Tuple2[String,Any] ) => tuple match {
-      case (key, v) if ! keysToIgnore.contains(key)  => getDataNodes(key, v, zip.toMap)
-      case _ => NodeSeq.Empty
-    } )).flatMap(x => x) }</tr> %
-      new scala.xml.UnprefixedAttribute ( "class" ,
-        if(rowodd){ "RowOdd" } else { "RowEven"} ,
-        scala.xml.Null)
-  }
-  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[scala.xml.Node] = {
-    <td> { obj.toString } </td>
-  }
-
-  def getTableContents: NodeSeq = {
-    val nodeBuf = new scala.xml.NodeBuffer
-    nodeBuf ++=     getHeaderRow( )
-    nodeBuf ++= data.map( oa =>  getDataRow(oa))
-    //info("getTableContents: returning "+ nodeBuf)
-    nodeBuf
-  }
-}
+import net.tupari.lib.SimpFactory
 
 class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
@@ -106,8 +49,9 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
 class PgMonCometBackendsActor  extends CometActor with Logger{
 
-  var tableId = "backendstable"
-  val lockTableId = "lockstable"
+  lazy val tableId = "backendstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
+  lazy val lockTableId = "lockstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
+  lazy val dateSpanId = "dspan" + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
   var refreshOn = false
 
   override protected def dontCacheRendering: Boolean = true
@@ -115,15 +59,16 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
 
   def render = {
     debug("render called")
-    //Schedule.schedule(this, "update", 1L)
 
     ".backendstbl" #> <table  > <tbody id={ tableId }>{ getTableContents } </tbody></table> &
+      ".backendssql" #> <span>{ backendsSql } </span> &
       ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>  &
+      ".lockssql" #>   <span>{ locksSql } </span> &
+      ".freshnessdate" #> <span id={ dateSpanId } />  &
       ".reloadbox" #>   SHtml.ajaxCheckbox (false, { (b: Boolean) =>
         refreshOn = b
         if (b) this ! "update"
       })
-
   }
 
   private val RUNNING_TIME = "running_time"
@@ -157,10 +102,13 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
       }
       ans
     }
-  }//class
-  def getTableContents: NodeSeq = {
-    info("getTableContents starting")
-    val data = Common.getData("select *, (now() - query_start)::text AS running_time  from pg_stat_activity ")
+  }//MyTableCreator
+
+  val backendsSql = "select *, (now() - query_start)::text AS running_time  from pg_stat_activity"
+
+  private def getTableContents: NodeSeq = {
+    debug("getTableContents starting")
+    val data = Common.getData(backendsSql)
     data match{
       case Right( (keys, oaa) ) =>
         new MyTableCreator(keys, oaa).getTableContents
@@ -170,32 +118,33 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         <tr><td class="error">code error in { this.getClass }</td></tr>
     }
   }
-
+  /** Note: there appears to be a problem with the postgres jdbc driver that causes this query not to show the relation in some cases.  I'm trying to resolve this. */
   class LocksTableCreator(keys: List[String], data: List[List[Any]], lockedRels: Set[String]) extends TableCreator(keys, data){
 
     override  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[Node]={
       <td> {
         key match {
           case "pid" => <a href={ "#" + obj}>{ obj }</a>
-          case "relname" if row("locktype") == "table" =>
-            <a href={ "pgact.jsp?table="+ obj}> { obj }</a>
+//          case "relname" if row("locktype") == "table" =>
+//            <a href={ "pgact_page?table="+ obj}> { obj }</a>
           case _ =>
             Option(obj).getOrElse("").toString }
         } </td> %
         { key match {
           case "granted" if (obj == false) =>
-            new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
-          case "relname" if lockedRels.contains( row("relname").asInstanceOf[String] ) && row("granted") == true =>
-            new scala.xml.UnprefixedAttribute ("bgcolor", "lime",   scala.xml.Null)
+            new scala.xml.UnprefixedAttribute ("class", "ungrantedlock",   scala.xml.Null)
+          case "granted" if lockedRels.contains( row("relname").asInstanceOf[String] ) && row("granted") == true =>
+            new scala.xml.UnprefixedAttribute ("class", "grantedlock",   scala.xml.Null)
           case _ =>
             scala.xml.Null
-        }
-        }
+        }}
     }
-  }//class
+  }//class  LocksTableCreator
 
-  def getLocksTableContents = {
-    Common.getData("SELECT (select relname from pg_catalog.pg_class where pg_catalog.pg_class.oid = relation) as relname, * FROM pg_locks ORDER BY pid, relation;") match{
+  private val locksSql = "SELECT (select relname from pg_catalog.pg_class where pg_catalog.pg_class.oid = relation) as relname, * FROM pg_locks ORDER BY pid, relation;"
+
+  private def getLocksTableContents = {
+    Common.getData(locksSql) match{
       case Right( (keys, oaa) ) =>
         object MapWithNotGranted{
           def unapply(list: List[_]) = {

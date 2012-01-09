@@ -23,7 +23,17 @@ text-align:right;
 min-width:100px;
 }
 
+.sql{
+    font-size: .8em;
+    }
 
+.grantedlock{
+    background-color: lime !important;
+    }
+
+.ungrantedlock{
+    background-color: red !important;
+}
 
 </style>
 </head>
@@ -56,10 +66,11 @@ min-width:100px;
 <h3>Postgres backends</h3>
     <div class="reloadbox"></div> autorefresh
     <table class="backendstbl" ></table>
-
+     <div class="backendssql sql" />
 
 <h3>Locks</h3>
           <table class="lockstbl" ></table>
+           <div class="lockssql sql" />
   </div>
 
  </div>
