@@ -16,20 +16,30 @@ import net.tupari.pgmon.lib.TableCreator
 
 class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
-  var tableId = "slonytable"
+  private val slonySql = "select schemaname from pg_tables where tablename = 'sl_log_1'"
+  private var sqlUsed = ""
+  private var tableId = "slonytable"
+  private var sqlSpanId = "slonysqlspan"
+  private var refreshOn = false
 
   override protected def dontCacheRendering: Boolean = true
 
   def render = {
-    <table id={ tableId } > { getTableContents } </table>
+    ".slonytbl" #> <table  > <tbody id={ tableId }>{ getTableContents } </tbody></table> &
+      ".backendssql" #> <span  id={ sqlSpanId }>{ sqlUsed } </span> &
+      ".reloadbox" #>   SHtml.ajaxCheckbox (false, { (b: Boolean) =>
+        refreshOn = b
+        if (b) this ! "update"
+      })
   }
 
   def getTableContents = {
-    Common.getData("select schemaname from pg_tables where tablename = 'sl_log_1'") match{
+    Common.getData(slonySql) match{
       case Right( (_, Nil)) =>
         <tr><td>No slony installation detected</td></tr>
       case Right( (_, lla) ) =>
         val sql = lla.map( la => la(0) ) map ( schema => "select "+schema+".slonyversion( ) AS version, * from "+schema+".sl_status" ) mkString(" UNION ALL ")
+        sqlUsed = sql
         Common.getData(sql) match{
           case Right( (keys, oaa) ) =>
             <tr> { keys.map( key => <th> { key }</th> ) } </tr> ++
@@ -42,8 +52,11 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
     }
   }
   override def lowPriority : PartialFunction[Any, Unit] = {
-    case _ =>
+    case "update" =>
       partialUpdate(SetHtml(tableId, getTableContents))
+      partialUpdate(SetHtml(sqlSpanId, Text(sqlUsed))) //in practice doesn't change much
+      if (refreshOn  )
+        Schedule.schedule(this, "update", 2500L)
   }
 
 }//class
@@ -120,7 +133,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         <tr><td class="error">code error in { this.getClass }</td></tr>
     }
   }
-  /** Note: there appears to be a problem with the postgres jdbc driver that causes this query not to show the relation in some cases.  I'm trying to resolve this. */
+
   class LocksTableCreator(keys: List[String], data: List[List[Any]], lockedRels: Set[String]) extends TableCreator(keys, data){
 
     override  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[Node]={

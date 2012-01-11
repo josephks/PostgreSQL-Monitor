@@ -38,9 +38,14 @@ min-width:100px;
 </style>
 </head>
 
-                     
+
 <h3>Slony status</h3>
-<lift:comet type="PgMonCometSlonyStatusActor" />
+<div lift="comet?type=PgMonCometSlonyStatusActor">
+ <div class="reloadbox"></div> autorefresh
+    <table class="slonytbl" ></table>
+     <div class="slonysql sql" />
+</div>
+
 
 <h3>Bandwith</h3>
 <div lift="comet?type=PgBandwithActor">
