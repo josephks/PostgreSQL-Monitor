@@ -82,37 +82,37 @@ private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ Simp
   }
 private val numFormat = java.text.NumberFormat.getInstance
 
- def doUpdate = {
-   setDataPoint match{
-     case None =>
-       prevDataPoint match {
-	 case null =>
-	   //first time, do nothing
-           debug("first datapnt, doing nothing")
-	 case _ =>
-           for(span <- spanList){
-             val text =  span match{
-               case ReadBps() => 
-                 numFormat.format(lastDataPoint.getBpsReadSince(prevDataPoint))
-               case WriteBps() =>
+  def doUpdate = {
+    setDataPoint match{
+      case None =>
+        prevDataPoint match {
+          case null =>
+            //first time, do nothing
+            debug("first datapnt, doing nothing")
+          case _ =>
+            for(span <- spanList){
+              val text =  span match{
+                case ReadBps() =>
+                  numFormat.format(lastDataPoint.getBpsReadSince(prevDataPoint))
+                case WriteBps() =>
                   numFormat.format(lastDataPoint.getBpsWrittenSince(prevDataPoint))
-               case CheckpointWriteBps() =>
+                case CheckpointWriteBps() =>
                   numFormat.format(lastDataPoint.getChptWSince(prevDataPoint))
-               case CleaningWriteBps()  =>
-                 numFormat.format(lastDataPoint.getCleanWSince(prevDataPoint) )
-               case BackendWriteBps() =>
-                 numFormat.format(lastDataPoint.getBkndWSince(prevDataPoint))
-               case Timenow() =>
-                 lastDataPoint.timestamp
-             }
-             partialUpdate(SetHtml(span.getId, <div>{ text }</div>))
-             //info("did partial update for span "+span.getId)
-           }
-         //info("processed "+spanList.size+" entries")
-       }
-     case Some(errstr) =>
-       <div class="error">{errstr}</div>
-   }
+                case CleaningWriteBps()  =>
+                  numFormat.format(lastDataPoint.getCleanWSince(prevDataPoint) )
+                case BackendWriteBps() =>
+                  numFormat.format(lastDataPoint.getBkndWSince(prevDataPoint))
+                case Timenow() =>
+                  lastDataPoint.timestamp.toString.split('.')(0)
+              }
+              partialUpdate(SetHtml(span.getId, <div>{ text }</div>))
+              //info("did partial update for span "+span.getId)
+            }
+          //info("processed "+spanList.size+" entries")
+        }
+      case Some(errstr) =>
+        <div class="error">{errstr}</div>
+    }
  }
 
   Schedule.schedule(this, "update", 1L)
