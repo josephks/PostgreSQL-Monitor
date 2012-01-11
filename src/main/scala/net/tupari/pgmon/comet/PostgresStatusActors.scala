@@ -12,6 +12,7 @@ import net.liftweb.http.{SHtml, S, CometActor}
 import net.liftweb.http.js.JsCmds
 import scala.xml.Node
 import net.tupari.lib.SimpFactory
+import net.tupari.pgmon.lib.TableCreator
 
 class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
@@ -49,10 +50,11 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
 class PgMonCometBackendsActor  extends CometActor with Logger{
 
-  lazy val tableId = "backendstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
-  lazy val lockTableId = "lockstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
-  lazy val dateSpanId = "dspan" + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
-  var refreshOn = false
+  private lazy val tableId = "backendstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
+  private lazy val lockTableId = "lockstable"   + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
+  private lazy val dateSpanId = "dspan" + SimpFactory.inject[ SimpFactory.UniqueNumber].getOrElse("")
+  private var hasDate = false
+  private var refreshOn = false
 
   override protected def dontCacheRendering: Boolean = true
 
@@ -64,7 +66,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
       ".backendssql" #> <span>{ backendsSql } </span> &
       ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>  &
       ".lockssql" #>   <span>{ locksSql } </span> &
-      ".freshnessdate" #> <span id={ dateSpanId } />  &
+      ".freshnessdate" #> { hasDate = true ;  <span id={ dateSpanId } /> } &
       ".reloadbox" #>   SHtml.ajaxCheckbox (false, { (b: Boolean) =>
         refreshOn = b
         if (b) this ! "update"
@@ -86,7 +88,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     }
     override  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[Node]={
       val ans = new scala.xml.NodeBuffer
-      ans ++=  <td> { Option(obj).getOrElse("").toString } </td> %
+      ans ++=  <td> { getString(obj) } </td> %
         { key match {
           case "waiting" if (obj == true) =>
             new scala.xml.UnprefixedAttribute ("bgcolor", "red",   scala.xml.Null)
@@ -127,8 +129,8 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
           case "pid" => <a href={ "#" + obj}>{ obj }</a>
 //          case "relname" if row("locktype") == "table" =>
 //            <a href={ "pgact_page?table="+ obj}> { obj }</a>
-          case _ =>
-            Option(obj).getOrElse("").toString }
+          case _ => getString(obj)
+        }
         } </td> %
         { key match {
           case "granted" if (obj == false) =>
@@ -176,6 +178,8 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
     case "update" =>
       partialUpdate(SetHtml(tableId, getTableContents))
       partialUpdate(SetHtml(lockTableId, getLocksTableContents))
+      if (hasDate)
+          partialUpdate(SetHtml(dateSpanId, Text(now.toString) ))
       if (refreshOn  )
         Schedule.schedule(this, "update", 2500L)
 

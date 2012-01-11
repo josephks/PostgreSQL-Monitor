@@ -29,47 +29,4 @@ object Common {
 }
 
 
-class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
-  //val nodeBuf = new scala.xml.NodeBuffer
 
-  val keysToIgnore: List[String] = List()
-
-  protected def getHeaderRow: Seq[Node] = {
-    <tr> { keys.filterNot(key => keysToIgnore.contains(key)).map( key => getHeaderNodes( key ) ) } </tr>
-  }
-  protected def getHeaderNodes(key: String ): Seq[Node] = {
-    <th> { key } </th>
-  }
-  var rowodd = true
-  /** meant to be overridden */
-  protected def shouldFlipRowOdd :Boolean = {
-    return true
-  }
-  protected def getDataRow(oa: List[Any]): Node = {
-    if (shouldFlipRowOdd)
-      rowodd = ! rowodd
-    val zip = keys.zip(oa)
-    <tr> { (zip map ( (tuple: Tuple2[String,Any] ) => tuple match {
-      case (key, v) if ! keysToIgnore.contains(key)  => getDataNodes(key, v, zip.toMap)
-      case _ => NodeSeq.Empty
-    } )).flatMap(x => x) }</tr> %
-      new scala.xml.UnprefixedAttribute ( "class" ,
-        if(rowodd){ "RowOdd" } else { "RowEven"} ,
-        scala.xml.Null)
-  }
-  protected def getDataNodes(key: String, obj: Any, row: Map[String, Any] ): Seq[scala.xml.Node] = {
-    <td> { obj.toString } </td>
-  }
-
-  def getTableContents: NodeSeq = {
-    val nodeBuf = new scala.xml.NodeBuffer
-    nodeBuf ++= getHeaderRow
-    data.foreach( {row =>
-        nodeBuf ++= getDataRow(row)
-        nodeBuf ++= scala.xml.Text("\n")   }
-    )
-    //nodeBuf ++= data.map( oa =>  getDataRow(oa))
-    //info("getTableContents: returning "+ nodeBuf)
-    nodeBuf
-  }
-}
