@@ -44,7 +44,6 @@ class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
       case null => ""
       case _ if obj.getClass == classOf[java.sql.Timestamp] =>
         obj.toString.split('.')(0) //we don't need to display fractional seconds
-        //info( "getString[timestamp]: " + obj.toString + " --> " + obj.toString.split('.')(0) )
       case _ => obj.toString
     }
   }
