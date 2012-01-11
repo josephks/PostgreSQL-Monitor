@@ -1,0 +1,66 @@
+<lift:children>
+
+            <div class="lift:surround?with=default;at=content">
+                <head><title>Postgres DB Size Monitor (servername goes here)</title>
+<link rel="stylesheet" type="text/css" href="/styles.css" />
+<link rel="stylesheet" type="text/css" href="/colors.css" />
+<meta http-equiv="expires" content="tues, 01 jan 1980 00:00:00 gmt" />
+<meta http-equiv="pragma" content="no-cache" />
+
+<style type="text/css">
+
+   td, th
+{
+min-width:20px;
+ border: 2px groove;
+}
+
+th{
+text-align: center;
+}
+table.bpstable tr td{
+text-align:right;
+min-width:100px;
+}
+
+.sql{
+    font-size: .8em;
+    }
+
+    .number{
+    text-align: right;
+    }
+
+
+</style>
+</head>
+
+
+<h3>Installation Size</h3>
+                <div lift="comet?type=PgInstallationSizeActor" >
+
+    <div class="reloadbox"></div> autorefresh
+    <table class="installsizetable" ></table>
+     <div class="installsizesql sql" />
+                </div>
+
+<h3>Relation Size</h3>
+<div lift="comet?type=PgRelationSizeActor">
+       <div class="reloadbox"></div> autorefresh
+    <table class="relsizetable" ></table>
+     <div class="relsizesql sql" />
+
+</div>
+
+
+
+<div lift="comet?type=PgTableStatsActor">
+<h3>Relation stats</h3>
+    <div class="reloadbutton"></div>
+    <table class="relstatstable" ></table>
+     <div class="relstatssql sql" />
+
+  </div>
+
+ </div>
+</lift:children>

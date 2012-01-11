@@ -33,7 +33,7 @@ class Boot extends LazyLoggable{
     def sitemap = SiteMap(
       Menu.i("Home") / "index",
       Menu("Backends") / "pgmon",
-      Menu("Size") / "dbsize" >> PlaceHolder,
+      Menu("Size") / "pgsize",
 
       // more complex because this menu allows anything in the
       // /static path to be visible
