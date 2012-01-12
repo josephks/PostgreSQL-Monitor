@@ -2,7 +2,6 @@ package net.tupari.pgmon.comet
 
 
 import _root_.net.liftweb.util._
-//import    _root_.net.liftweb.util.TimeHelpers._
 import net.liftweb.common.{Logger, Full}
 import net.liftweb.http.js.JsCmds.{Replace, SetHtml}
 import xml.{TopScope, NodeSeq, Text}
@@ -16,6 +15,7 @@ class BwDataPoint(oa: List[Any], block_size: Int){
   val buffers_checkpoint = oa(2).asInstanceOf[java.lang.Number].longValue
   val buffers_clean = oa(3).asInstanceOf[java.lang.Number].longValue
   val buffers_backend = oa(4).asInstanceOf[java.lang.Number].longValue
+  val stats_reset = oa(5).asInstanceOf[java.sql.Timestamp]
 
   private def getBytesPerSec(bytes:Long,  last: BwDataPoint) =   block_size * 1000 * bytes / (timestamp.getTime - last.timestamp.getTime)
   def getBytesWritten =  buffers_checkpoint + buffers_clean + buffers_backend
@@ -24,38 +24,36 @@ class BwDataPoint(oa: List[Any], block_size: Int){
   def getChptWSince(last: BwDataPoint) = getBytesPerSec(buffers_checkpoint - last.buffers_checkpoint, last)
   def getCleanWSince(last: BwDataPoint) = getBytesPerSec(buffers_clean - last.buffers_clean, last)
   def getBkndWSince(last: BwDataPoint) = getBytesPerSec(buffers_backend - last.buffers_backend, last)
+  /** Get a dummy datapoint the represents the beginning of stats collection */
+  def getBaseline = new BwDataPoint(List(stats_reset, 0, 0, 0, 0, stats_reset), block_size)
 }
 
 class PgBandwithActor  extends CometActor with Logger{
 
-  val idBase =  "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
-  val ids = List("totalwr", "totalr", "chkw", "cleanw", "backw")
+  val idBase = "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
 
-   private val block_size = 8 * 1024 //todo: get from db, don't assume
+  private val block_size = 8 * 1024 //todo: get from db, don't assume
 
-   private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend from pg_stat_bgwriter";
-   private var tableId = "pgbwtbl"
+  private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend, stats_reset from pg_stat_bgwriter";
 
-  private  val numCols = "2"
-  
-   private var prevDataPoint:BwDataPoint = null
+  private var prevDataPoint:BwDataPoint = null
   private  var lastDataPoint:BwDataPoint = null
 
   private var spanList:List[Dataspan] = Nil
 
-private sealed abstract class Dataspan(myIdBase: String){
-//seems hackish to me, to save a reference to myself in the constructor
-spanList = this :: spanList
+  private sealed abstract class Dataspan(myIdBase: String){
+    //seems hackish to me, to save a reference to myself in the constructor
+    spanList = this :: spanList
 
-def getId = idBase + myIdBase
-def getSpan = <span id={ getId } >...</span>
-}
-private case class ReadBps() extends Dataspan("readbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
-private case class WriteBps() extends Dataspan("writebps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
-private case class CheckpointWriteBps() extends Dataspan("cpwbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
-private case class CleaningWriteBps() extends Dataspan("cleanbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
-private case class BackendWriteBps() extends Dataspan("bkndbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
-private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+    def getId = idBase + myIdBase
+    def getSpan = <span id={ getId } >...</span>
+  }
+  private case class ReadBps() extends Dataspan("readbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+  private case class WriteBps() extends Dataspan("writebps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+  private case class CheckpointWriteBps() extends Dataspan("cpwbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+  private case class CleaningWriteBps() extends Dataspan("cleanbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+  private case class BackendWriteBps() extends Dataspan("bkndbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
+  private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
 
 
   def render = {
@@ -67,49 +65,44 @@ private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ Simp
     ".timenow" #> new Timenow().getSpan &
     ".cssrtest" #> <span>cssrtest</span>
   }
-  def placeholder = NodeSeq.Empty
 
   /** Return an error string, if any */
   private def setDataPoint: Option[String] = {
     Common.getData(sql) match{
       case Right( (keys, oaa) ) =>
-	prevDataPoint = lastDataPoint
-      lastDataPoint = new BwDataPoint(oaa(0), block_size)
-      None
+        prevDataPoint = lastDataPoint
+        lastDataPoint = new BwDataPoint(oaa(0), block_size)
+        //if this is the first data fetch, or there was a stats reset, set the prev data point to be a baseline
+        if (prevDataPoint == null || prevDataPoint.stats_reset != lastDataPoint.stats_reset)
+          prevDataPoint = lastDataPoint.getBaseline
+        None
       case Left(errstr) =>
-	       Some(errstr)
+        Some(errstr)
     }
   }
-private val numFormat = java.text.NumberFormat.getInstance
+  private val numFormat = java.text.NumberFormat.getInstance
 
   def doUpdate = {
     setDataPoint match{
       case None =>
-        prevDataPoint match {
-          case null =>
-            //first time, do nothing
-            debug("first datapnt, doing nothing")
-          case _ =>
-            for(span <- spanList){
-              val text =  span match{
-                case ReadBps() =>
-                  numFormat.format(lastDataPoint.getBpsReadSince(prevDataPoint))
-                case WriteBps() =>
-                  numFormat.format(lastDataPoint.getBpsWrittenSince(prevDataPoint))
-                case CheckpointWriteBps() =>
-                  numFormat.format(lastDataPoint.getChptWSince(prevDataPoint))
-                case CleaningWriteBps()  =>
-                  numFormat.format(lastDataPoint.getCleanWSince(prevDataPoint) )
-                case BackendWriteBps() =>
-                  numFormat.format(lastDataPoint.getBkndWSince(prevDataPoint))
-                case Timenow() =>
-                  lastDataPoint.timestamp.toString.split('.')(0)
-              }
-              partialUpdate(SetHtml(span.getId, <div>{ text }</div>))
-              //info("did partial update for span "+span.getId)
-            }
-          //info("processed "+spanList.size+" entries")
-        }
+        for(span <- spanList){
+          val text =  span match{
+            case ReadBps() =>
+              numFormat.format(lastDataPoint.getBpsReadSince(prevDataPoint))
+            case WriteBps() =>
+              numFormat.format(lastDataPoint.getBpsWrittenSince(prevDataPoint))
+            case CheckpointWriteBps() =>
+              numFormat.format(lastDataPoint.getChptWSince(prevDataPoint))
+            case CleaningWriteBps()  =>
+              numFormat.format(lastDataPoint.getCleanWSince(prevDataPoint) )
+            case BackendWriteBps() =>
+              numFormat.format(lastDataPoint.getBkndWSince(prevDataPoint))
+            case Timenow() =>
+              lastDataPoint.timestamp.toString.split('.')(0)
+          }
+          partialUpdate(SetHtml(span.getId, <div>{ text }</div>))
+          //info("did partial update for span "+span.getId)
+        } //for span
       case Some(errstr) =>
         <div class="error">{errstr}</div>
     }
