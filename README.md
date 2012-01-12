@@ -11,6 +11,7 @@ This is still in a very raw state.  On the roadmap:
 * Allow connections to more than just the default database
 * Get disk level bandwith from /proc files    ( According to [the docs](http://www.postgresql.org/docs/9.1/interactive/functions-admin.html) the pg file reading functions only work on files in the db cluster, so a workarond is needed)
 * In the locks view, figure out how to get relation names for relations in other databases
+* One click db schema -> ORM code generation
 
 There is no authentication as of now.  Access control must be done by the container.
 
