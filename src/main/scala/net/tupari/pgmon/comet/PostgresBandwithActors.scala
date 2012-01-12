@@ -32,7 +32,7 @@ class PgBandwithActor  extends CometActor with Logger{
 
   val idBase = "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
 
-  private val block_size = 8 * 1024 //todo: get from db, don't assume
+  private var block_size = 8 * 1024 //8k is the default value
 
   private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend, stats_reset from pg_stat_bgwriter";
 
@@ -55,6 +55,20 @@ class PgBandwithActor  extends CometActor with Logger{
   private case class BackendWriteBps() extends Dataspan("bkndbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
   private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
 
+  override def localSetup() = {
+    //todo: share this. There is no reason to do this every time the status page is loaded
+    val showBlkszSql = "show block_size;"
+
+    Common.getData(showBlkszSql) match{
+      case Right( (keys, List(List(bs))) )  =>
+        info("bs is a: "+bs.getClass)
+        block_size = bs.asInstanceOf[String].toInt
+        case Left(errstr) =>
+        error(errstr)
+      case x  =>
+        error("code bug: block size query returned: " +x)
+    }
+  }
 
   def render = {
     ".totalreadbps" #> new ReadBps().getSpan &  
