@@ -33,7 +33,7 @@ class PgBandwithActor  extends CometActor with Logger{
   val idBase = "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
 
   private var block_size = 8 * 1024 //8k is the default value
-
+   //see: http://www.postgresql.org/docs/9.1/static/monitoring-stats.html
   private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend, stats_reset from pg_stat_bgwriter";
 
   private var prevDataPoint:BwDataPoint = null
@@ -60,8 +60,7 @@ class PgBandwithActor  extends CometActor with Logger{
     val showBlkszSql = "show block_size;"
 
     Common.getData(showBlkszSql) match{
-      case Right( (keys, List(List(bs))) )  =>
-        info("bs is a: "+bs.getClass)
+      case Right( (keys, List(List(bs))) ) =>
         block_size = bs.asInstanceOf[String].toInt
         case Left(errstr) =>
         error(errstr)
