@@ -1,6 +1,7 @@
 package bootstrap.liftweb
 
 import net.liftweb._
+import db.PostgreSqlDriver
 import util._
 import Helpers._
 
@@ -20,11 +21,6 @@ import code.model._
 class Boot extends LazyLoggable{
   def boot {
     logger.info("Boot starting!")
-
-    // Use Lift's Mapper ORM to populate the database
-    // you don't need to use Mapper to use Lift... use
-    // any ORM you want
-    //Schemifier.schemify(true, Schemifier.infoF _, User)
 
     // where to search snippet
     LiftRules.addToPackages("net.tupari.pgmon")
@@ -69,11 +65,34 @@ class Boot extends LazyLoggable{
     logger.info("Boot: setting db connection")
     Class.forName("org.postgresql.Driver")
     if (!DB.jndiJdbcConnAvailable_?) {
+      //Creator a vendor class that extends StandardDBVendor.
+      //The point of this is to set the appliation_name in pg 9 and above
       val vendor =
-        new StandardDBVendor(Props.get("db.driver") openOr "org.h2.Driver",
-          Props.get("db.url") openOr
-            "jdbc:h2:lift_proto.db;AUTO_SERVER=TRUE",
-          Props.get("db.user"), Props.get("db.password"))
+        new StandardDBVendor(Props.get("db.driver") openOr "org.postgresql.Driver",
+          Props.get("db.url") openOr  "jdbc:postgresql://localhost/template1",
+          Props.get("db.user"), Props.get("db.password")) {
+          override def createOne: Box[java.sql.Connection] =  {
+            val ans = super.createOne
+            ans match{
+              case Full(conn) =>
+                val meta = conn.getMetaData
+                (meta.getDatabaseProductName,meta.getDatabaseMajorVersion) match {
+                  case (PostgreSqlDriver.name, major) if (major >= 9 ) =>
+                    val st = conn.createStatement
+                    try {
+                      st.execute("SET application_name = 'PgMon'")
+                    }catch{
+                      case ex => logger.warn(ex)
+                    }finally{
+                      st.close
+                    }
+                    case _ =>
+                }
+              case _ =>
+            }
+            ans
+          }
+        }
 
       LiftRules.unloadHooks.append(vendor.closeAllConnections_! _)
 
