@@ -5,7 +5,7 @@ import Keys._
 
 object MyBuild extends Build{
 
-  val liftVersion = "2.4-M5"
+  val liftVersion = "2.4"
 
 //I'm not sure if these comments are still valid for sbt 0.10.x:
   // uncomment the following if you want to use the snapshot repo
@@ -26,8 +26,7 @@ object MyBuild extends Build{
       "junit" % "junit" % "4.7" % "test",
       "ch.qos.logback" % "logback-classic" % "0.9.26",
       "org.scala-tools.testing" %% "specs" % "1.6.9" % "test",
-      "com.h2database" % "h2" % "1.2.147",
-                 "postgresql" % "postgresql" % "9.1-901.jdbc4" ,
+      "postgresql" % "postgresql" % "9.1-901.jdbc4" ,
 
       "org.specs2" %% "specs2" % "1.6.1",
       "org.specs2" %% "specs2-scalaz-core" % "6.0.1" % "test"
