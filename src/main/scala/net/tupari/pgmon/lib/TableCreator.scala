@@ -68,6 +68,12 @@ class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
     //info("getTableContents: returning "+ nodeBuf)
     nodeBuf
   }
+  def getTable(caption:Option[String]) = {
+    <table style="border: 3px inset"> {
+      caption.map(c => <caption>{ c }</caption>).getOrElse(scala.xml.Null)  ++
+    getTableContents
+      }</table>
+  }
 }
 
 
