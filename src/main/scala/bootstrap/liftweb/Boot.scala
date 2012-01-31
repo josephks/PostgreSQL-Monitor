@@ -12,6 +12,7 @@ import Loc._
 import mapper._
 
 import code.model._
+import net.tupari.pgmon.schemagen.SchemaPrinter
 
 
 /**
@@ -41,6 +42,14 @@ class Boot extends LazyLoggable{
     // set the sitemap.  Note if you don't want access control for
     // each page, just comment this line out.
     //LiftRules.setSiteMapFunc(() => sitemapMutators(sitemap))
+
+
+    LiftRules.dispatch.append {
+      case Req("api" :: "schema" :: Nil , _, _) =>
+        () => SchemaPrinter.getResponse(None)
+      case Req("api" :: "schema" :: format :: Nil, _, _) =>
+        () => SchemaPrinter.getResponse(Some(format))
+    }
 
     // Use jQuery 1.4
     LiftRules.jsArtifacts = net.liftweb.http.js.jquery.JQuery14Artifacts
