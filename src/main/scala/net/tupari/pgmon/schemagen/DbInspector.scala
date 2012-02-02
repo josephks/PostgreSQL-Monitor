@@ -20,7 +20,7 @@ object SchemaPrinter{
   def getResponse(formatterCode:Option[String]) = {
     val r = new java.io.PipedInputStream()
     val w = new java.io.PrintWriter(new java.io.PipedOutputStream(r))
-    scala.actors.Actor.actor({   //spin off thread to write to the writer
+    scala.concurrent.ops.spawn({   //spin off thread to write to the writer
       val schemaFormatter = formatterCode match{
         case Some("jpa") => Some(new JpaFormatter(w))
         case Some("lift") => Some(new LiftFormatter(w))
