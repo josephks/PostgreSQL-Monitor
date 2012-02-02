@@ -12,7 +12,6 @@ import collection.immutable.StringOps
  * User: jks
  * Date: 1/18/12
  * Time: 10:18 PM
- * To change this template use File | Settings | File Templates.
  */
 
 object SchemaPrinter{
@@ -21,56 +20,81 @@ object SchemaPrinter{
   def getResponse(formatterCode:Option[String]) = {
     val r = new java.io.PipedInputStream()
     val w = new java.io.PrintWriter(new java.io.PipedOutputStream(r))
-    scala.actors.Actor.actor({
-      new DbInspector().getDbSchema(w)
+    scala.actors.Actor.actor({   //spin off thread to write to the writer
+      val schemaFormatter = formatterCode match{
+        case Some("jpa") => Some(new JpaFormatter(w))
+        case Some("lift") => Some(new LiftFormatter(w))
+        case _ => Some(new TableLister(w))
+      }
+      try{
+        new DbInspector().getDbSchema(w, schemaFormatter)
+      }finally{
+        w.close()
+      }
     })
     Full(new StreamingResponse(r, () => {}, -1, headers, Nil, 200))
-    }   // final case class StreamingResponse(data: {def read(buf: Array[Byte]): Int}, onEnd: () => Unit, size: Long, headers:  List[(String, String)], cookies: List[HTTPCookie], code: Int)
-
+    // final case class StreamingResponse(data: {def read(buf: Array[Byte]): Int}, onEnd: () => Unit, size: Long, headers:  List[(String, String)], cookies: List[HTTPCookie], code: Int)
+  }
 }
-  object OutputType extends Enumeration {
-     type OutputType = Value
-     val Lift, JPA, Text, HTML = Value
-   }
-   object Constraint extends Enumeration {
-     type Constraint = Value
-     val Pkey, Unique, ForeignKey = Value
-   }
+/** Different constraint types */
+object Constraint extends Enumeration {
+  type Constraint = Value
+  val Pkey, Unique, ForeignKey = Value
+}
 
-/** FieldDef (represents a field in a table) needs to be declared outside TableDef, since
+/** FieldDef (represents a field in a table). Needs to be declared outside TableDef, since
  * tables reference fields from other tables. FieldDefs are stored inside TableDefs but don't reference back to them */
-class FieldDef(name:String,  fieldType:String, notnull:Boolean, indexed:Boolean  ){
-  class ForeignKeySingleRef(other: FieldDef)
-  var  constraints: List[Constraint.Constraint] = Nil
+class FieldDef(val name:String, val fieldType:String,val notnull:Boolean,val indexed:Boolean  ){
+  class ForeignKeySingleRef(othertable:TableDef , other: FieldDef)
+  var constraints: List[Constraint.Constraint] = Nil
   var foreignKeys:List[ForeignKeySingleRef]  = Nil
 }
 
-class TableDef (name:String){
-  class IndexDef(fields:List[FieldDef],  unique:Boolean)
+  class ForeignKeyManyRef(val fromtable: TableDef, val from: List[FieldDef], val fromUniq: Boolean, //is the from side unique?
+                          val totable: TableDef, val to: List[FieldDef], val toUniq: Boolean)
+
+class TableDef (val name:String){
+  class IndexDef(val fields:List[FieldDef],val unique:Boolean, val primary:Boolean)
   var fields:List[FieldDef] = Nil
   /** fields indexed by field number */
   val fieldDefMap = scala.collection.mutable.Map[Int, FieldDef]()
   var indexes:List[IndexDef]  = Nil
-  var foreignKeys:List[ForeignKeyManyRef] = Nil
-  class ForeignKeyManyRef(from: List[FieldDef], to:  List[FieldDef])
+  var incomingForeignKeys:List[ForeignKeyManyRef] = Nil
+  var outgoingForeignKeys:List[ForeignKeyManyRef] = Nil
+  def getPkField = {
+    fields.find{ f => f.constraints.contains(Constraint.Pkey) }
+  }
+  def isUniqIndexOn(fieldnames: List[String]) = {
+    indexes.exists ( indexDef =>
+      indexDef.unique &&
+        indexDef.fields.length == fieldnames.length
+        && fieldnames.intersect( indexDef.fields.map(f => f.name) ).length == fieldnames.length)
+  }
+  override def toString = "TableDef("+name+")"
 }
 
-class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends LazyLoggable {
-
+class DbInspector() extends LazyLoggable {
   private var tableDefs = Map[String, TableDef]()
   private var tableDefsByOid = Map[Long, TableDef]()
-  private var formatterCode:Option[String] = None
 
   //these fields  are used during inital data processing
   private var schemaList:(List[String], List[List[Any]]) = null
 
-  private lazy val oidIdx = schemaList match { case (keys, _) => keys.indexOf("oid")  }
-  private lazy val schemaNameIdx = schemaList match { case (keys, _) => keys.indexOf("schema")  }
+  private lazy val oidIdx = schemaList match { case (keys, _) => keys.indexOf("oid")  }  //index of the oid column
+  //private lazy val schemaNameIdx = schemaList match { case (keys, _) => keys.indexOf("schema")  }
+  private lazy val relNameIdx = schemaList match { case (keys, _) => keys.indexOf("relname")  }  //index of the relname column
   private var constraintData:(List[String], List[List[Any]]) = null
   private var indexData:(List[String], List[List[Any]]) = null
-  
-  private def getTableOid(name:String ) = schemaList  match { case (_, oaa) => oaa.find (oa => oa(schemaNameIdx) == name).map( oa => oa(oidIdx).asInstanceOf[Long] ) }
-  
+
+  /** Given a table name return oid */
+  private def getTableOid(name:String): Option[Long] = {
+    schemaList  match {
+      case (keys, oaa) => oaa.find ({oa =>
+        oa(relNameIdx) == name
+      }).
+        map( oa => Some(oa(oidIdx).asInstanceOf[Long]) ).getOrElse({ logger.warn("could not find oid for table "+name+" in "+oaa.map(oa => keys.zip(oa).toMap)) ; None})
+    } //match
+  }
 
   private def getTableName(oid:Any): Option[String] = {
     schemaList match {
@@ -83,48 +107,51 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
     }
   }
 
-  def getDbSchema(writer:PrintWriter ) = {
+  def getDbSchema(writer:PrintWriter, schemaFormatter: Option[SchemaFormatter]) = {
     val sql = "select * from ( select (select nspname FROM pg_catalog.pg_namespace where oid = relnamespace) AS schema," +
       " relname, c.relkind, oid from pg_catalog.pg_class c WHERE c.relkind in ('v','r')) aa where schema = 'public'  ORDER BY schema, relname;"
     Common.getData(sql)   match{
       case Right( (keys, oaa) ) =>
         schemaList = (keys, oaa)
-        logger.info("query returned "+oaa.size+" rows")
+        logger.info("query returned "+oaa.size+" rows, schemaFormatter: "+schemaFormatter)
         getTableSchemaData()
         //we now have a list of tables and views
-        oaa.foreach( {list:List[Any] =>
-          val map = keys.zip(list).toMap
-          val oid = map("oid").asInstanceOf[Long]
-          map("relkind") match {
-            case "r" => getTableSchema(writer, map)
-            case "v" => //todo: handle view
-          }  }
-        )
+        schemaFormatter.foreach{sf =>
+          logger.info("about to process "+ tableDefs.values)
+          tableDefs.values.foreach{ td =>
+            logger.info("passing table "+td.name+" to formatter")
+            sf.format(td)
+          }
+        }
       case Left(errstr) =>
         writer.print(errstr)
     }
     writer.flush()
     writer.close()
   }
-  var tableSchemaData:Map[String,  List[Map[String, Any]]]  = null
-  
+  /** Keyed by table name, a list of field info */
+  private var tableSchemaData:Map[String,  List[Map[String, Any]]]  = null
+
   private def getTableSchemaData(){
-           getIndexAndConstraintData()
-      val sql = "SELECT   a.attrelid,  a.attname,  pg_catalog.format_type(a.atttypid, a.atttypmod)," +
-        "(SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128) " +
-        " FROM pg_catalog.pg_attrdef d WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)," +
-        " a.attnotnull, a.attnum, (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t  " +
-        " WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation " +
-        "FROM pg_catalog.pg_attribute a   WHERE  a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attrelid, a.attnum;"
+    getIndexAndConstraintData()
+    //see bottom of file for example of what output of this sql looks like
+    val sql = "SELECT a.attrelid,  a.attname,  pg_catalog.format_type(a.atttypid, a.atttypmod)," +
+      "(SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128) " +
+      " FROM pg_catalog.pg_attrdef d WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)," +
+      " a.attnotnull, a.attnum, (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t  " +
+      " WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation " +
+      "FROM pg_catalog.pg_attribute a WHERE  a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attrelid, a.attnum;"
 
     Common.getData(sql)   match{
       case Right( (keys, oaa) ) =>
-        tableSchemaData = oaa groupBy ( oa => getTableName(oa(0)).getOrElse(null)) mapValues  (  oaa => oaa.map(oa => keys.zip(oa).toMap))
+        tableSchemaData = oaa.groupBy( oa => getTableName(oa(0)).orNull).mapValues(  oaa => oaa.map(oa => keys.zip(oa).toMap))
         //                                                                       ^ list of string->oaa   mV-> string->List[Map]
         tableSchemaData.foreach{ case (tabname, listOfMaps) => {
+          //logger.info("  getTableSchemaData() processing for "+tabname);
           val tabDef = new TableDef(tabname)
           getTableOid(tabname).map{ tableOid =>
-            val fieldDefMap = tabDef.fieldDefMap //DELETE = scala.collection.mutable.Map[Int, tabDef.FieldDef]()
+            logger.info("  getTableSchemaData() processing for "+tabname+" (oid "+tableOid+")");
+            val fieldDefMap = tabDef.fieldDefMap
             tabDef.fields = listOfMaps.map{ map =>
               val attributeNum = map("attnum").asInstanceOf[Number].intValue()
               val constraints = getFieldConstraints(tableOid, attributeNum )
@@ -144,12 +171,19 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
             indexData match { case (keys, oaa) =>
               oaa.foreach{ oa =>
                 val map = keys.zip(oa).toMap
-                map("indkey").asInstanceOf[List[Int]] match{
-                  case fieldIdArr if fieldIdArr.length > 1 && map("indrelid") == tableOid =>
-                    tabDef.indexes = new tabDef.IndexDef( fieldIdArr.map(fid => fieldDefMap(fid) ) , map("indisunique").asInstanceOf[Boolean] ) :: tabDef.indexes
-                  //can also check if for primary key
+                val indkey = map("indkey")
+                indkey.asInstanceOf[java.sql.Array].getArray.asInstanceOf[Array[Any]].toList match{
+                  case fieldIdArr if fieldIdArr.length >= 1 && map("indrelid") == tableOid =>
+                    val isUniq = map("indisunique").asInstanceOf[Boolean]
+                    val isPrimary = map("indisprimary").asInstanceOf[Boolean]
+                    tabDef.indexes = new tabDef.IndexDef( fieldIdArr.map(fid => fieldDefMap(fid.asInstanceOf[Int]) ) , isUniq, isPrimary ) :: tabDef.indexes
+
+                     if (fieldIdArr.length == 1) {
+                       val field = fieldDefMap(fieldIdArr(0).asInstanceOf[Int])
+                       if (isUniq) field.constraints =  Constraint.Unique :: field.constraints
+                       if (isPrimary) field.constraints =  Constraint.Pkey :: field.constraints
+                            }
                   case _ =>
-                    //todo: add multi-field indexes
                 }
               }
             }
@@ -161,24 +195,22 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
         constraintData match{
           case (keys, oaa) =>
             oaa.map(oa => keys.zip(oa).toMap ).foreach{
-              case map if map("conrelid") != null && 'f' == map("contype")  =>
-              val fromTableOid = map("conrelid").asInstanceOf[Long]
-              val otherTableOid = map("conindid").asInstanceOf[Long]
-              val myCols = map("conkey").asInstanceOf[Array[Int]]
-              val refCols = map("confkey").asInstanceOf[Array[Int]]
-              if (myCols.length == 1) {
-                for ( toTabDef <- tableDefsByOid.get(otherTableOid) ;
-                      fromTabDef <- tableDefsByOid.get(fromTableOid) ;
-                      fromField <- fromTabDef.fieldDefMap.get(myCols(0))  ;
-                      toField <- toTabDef.fieldDefMap.get(refCols(0)) ) {
-                  new fromField.ForeignKeySingleRef(toField) :: fromField.foreignKeys
-                }
-              } else{
+              case map if map("conrelid") != null && "f" == map("contype")  =>
+                val fromTableOid = map("conrelid").asInstanceOf[Long]
+                val otherTableOid = map("confrelid").asInstanceOf[Long]
+                logger.info("procing fkey from "+fromTableOid+" "+tableDefsByOid(fromTableOid)+" to " + otherTableOid+" "+ tableDefsByOid.get(otherTableOid))
+                val fromCols = map("conkey").asInstanceOf[java.sql.Array].getArray.asInstanceOf[Array[java.lang.Integer]] //asInstanceOf[Array[Int]]
+                val refCols = map("confkey").asInstanceOf[java.sql.Array].getArray.asInstanceOf[Array[java.lang.Integer]]  //asInstanceOf[Array[Int]]
                   for ( toTabDef <- tableDefsByOid.get(otherTableOid) ;
-                      fromTabDef <- tableDefsByOid.get(fromTableOid) ){
-                    new  fromTabDef.ForeignKeyManyRef( myCols.map( fromTabDef.fieldDefMap(_) ).toList, refCols.map( fromTabDef.fieldDefMap(_) ).toList ) :: fromTabDef.foreignKeys
+                        fromTabDef <- tableDefsByOid.get(fromTableOid) ){
+                    val fromFields = fromCols.map(fromTabDef.fieldDefMap(_)).toList
+                    val toFields = refCols.map(toTabDef.fieldDefMap(_)).toList
+                    val fkey = new ForeignKeyManyRef(fromTabDef , fromFields, fromTabDef.isUniqIndexOn(fromFields.map(f => f.name)), //is the from side unique?
+                                    toTabDef, toFields, toTabDef.isUniqIndexOn(toFields.map(f => f.name)) )
+                    fromTabDef.outgoingForeignKeys = fkey :: fromTabDef.outgoingForeignKeys
+                    toTabDef.incomingForeignKeys = fkey :: fromTabDef.outgoingForeignKeys
                   }
-              }
+              case _ =>
             }
         }
       case Left(errstr) =>
@@ -193,7 +225,8 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
       case Left(errstr) =>
         logger.error(errstr)
     }
-    val indexSql = "SELECT * FROM pg_index"
+    //cast indkey to int[] (otherwise ends up being PgObject). This second indkey column ends up in the map
+    val indexSql = "SELECT *, indkey::int[] FROM pg_index"
     Common.getData(indexSql)   match{
       case Right( (keys, oaa) ) =>
            indexData =(keys, oaa)
@@ -205,27 +238,17 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
     constraintData    match{
       case (keys, oaa) =>
         oaa.map(oa => keys.zip(oa).toMap ).collect{
-          case map if map("conrelid") == tableoid && new StringOps("pu").contains( map("contype").asInstanceOf[Char])  =>
+          case map if map("conrelid") == tableoid && new StringOps("pu").contains( map("contype").asInstanceOf[String])  => //is string, not char
             map("contype") match { // c = check constraint, f = foreign key constraint, p = primary key constraint, u = unique constraint, t = constraint trigger, x = exclusion constraint
-              case 'p' => Constraint.Pkey
-              case 'u' => Constraint.Unique
+              case "p" => Constraint.Pkey
+              case "u" => Constraint.Unique
               //case 'f' => null
             }
         }
     }
   }
-  def getTableSchema(writer:PrintWriter, map:Map[String,Any]){  //old, delete
-    val oid = map("oid")
-    val tablename = map("relname")
-    val oldsql =  "SELECT a.attname,          pg_catalog.format_type(a.atttypid, a.atttypmod)," +
-      "(SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)   " +
-      "         FROM pg_catalog.pg_attrdef d     " +
-      "       WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),           a.attnotnull, a.attnum," +
-      "           (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t"+
-        "   WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation)" +
-      " AS attcollation FROM pg_catalog.pg_attribute a   WHERE a.attrelid = '" + oid +"' AND a.attnum > 0 AND NOT a.attisdropped "  +
-        "ORDER BY a.attnum; "
-    /*   gives output like:
+}
+    /*
     attname     |         format_type         |                         ?column?                          | attnotnull | attnum | attcollation
 ----------------+-----------------------------+-----------------------------------------------------------+------------+--------+--------------
  userkey        | integer                     | nextval(('public.directory_userkey_seq'::text)::regclass) | t          |      1 |
@@ -234,75 +257,3 @@ class DbInspector(outputType: OutputType.OutputType = OutputType.Text) extends L
  passwd         | character(40)               |                                                           | f          |      4 |
 
      */
-    /* next step: get index def. Gives unique fields & primary key. This query isn't good enough, we need to get the actual field names
-         local]:owl=> SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
-owl->           pg_catalog.pg_get_constraintdef(con.oid, true), contype, condeferrable, condeferred, c2.reltablespace
-owl->         FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i
-owl->           LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))
-owl->         WHERE c.oid = '16548' AND c.oid = i.indrelid AND i.indexrelid = c2.oid
-owl->         ORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname
-owl-> ;
-             relname              | indisprimary | indisunique | indisclustered | indisvalid |                                                        pg_get_indexdef                                                         | pg_get_const
-raintdef  | contype | condeferrable | condeferred | reltablespace
-----------------------------------+--------------+-------------+----------------+------------+--------------------------------------------------------------------------------------------------------------------------------+-------------
-----------+---------+---------------+-------------+---------------
- directory_pkey                   | t            | t           | f              | t          | CREATE UNIQUE INDEX directory_pkey ON directory USING btree (userkey)                                                          | PRIMARY KEY
-(userkey) | p       | f             | f           |             0
- directory_lower_username_seg_key | f            | t           | f              | t          | CREATE UNIQUE INDEX directory_lower_username_seg_key ON directory USING btree (lower(username) text_pattern_ops, seg)          |
-          |         |               |             |             0
- directory_seg_xid_idx            | f            | t           | f              | t          | CREATE UNIQUE INDEX directory_seg_xid_idx ON directory USING btree (seg, xid) WHERE xid IS NOT NULL                            |
-          |         |               |             |             0
- directory_flow_idx               | f            | f           | f              | t          | CREATE INDEX directory_flow_idx ON directory USING btree (seg, statchangedate) WHERE status = ANY (ARRAY[4, 6])                |
-          |         |               |             |             0
- directory_nonactive_idx          | f            | f           | f              | t          | CREATE INDEX directory_nonactive_idx ON directory USING btree (seg) WHERE status = 4                                           |
-          |         |               |             |             0
- directory_seg_lower_username_idx | f            | f           | f              | t          | CREATE INDEX directory_seg_lower_username_idx ON directory USING btree (seg, lower(username))                                  |
-          |         |               |             |             0
- directory_seg_segadm_idx         | f            | f           | f              | t          | CREATE INDEX directory_seg_segadm_idx ON directory USING btree (seg, segadm) WHERE segadm IS NOT NULL AND segadm > 0::smallint |
-          |         |               |             |             0
-(7 rows)
-      */
-    def toHtml(sql:String )= {
-    Common.getData(sql)   match{
-      case Right( (keys, oaa) ) =>
-        var tc = new TableCreator(keys, oaa)
-        writer.write {
-          tc.getTable(Some("table "+map("relname"))).toString()
-        }
-      case Left(errstr) =>
-        writer.write(errstr)
-    }    }
-    toHtml(oldsql)
-      
-       val constraintSql = " SELECT conname,  pg_catalog.pg_get_constraintdef(r.oid, true) as condef " +
-         " FROM pg_catalog.pg_constraint r WHERE r.conrelid = '" + oid +" ' AND r.contype = 'f' ORDER BY 1 "
-       toHtml(constraintSql)
-    
-    
-       val forKeySql  = "SELECT conname, conrelid::pg_catalog.regclass, pg_catalog.pg_get_constraintdef(c.oid, true) as condef " +
-   " FROM pg_catalog.pg_constraint c WHERE c.confrelid = '" + oid +"' AND c.contype = 'f' ORDER BY 1   "
-    toHtml(forKeySql)
-       /*        conname        |  conrelid   |                              condef
-----------------------+-------------+-------------------------------------------------------------------
- $1                   | bounced     | FOREIGN KEY (uid) REFERENCES directory(userkey) ON DELETE CASCADE
- dirtydcache_uid_fkey | dirtydcache | FOREIGN KEY (uid) REFERENCES directory(userkey) ON DELETE CASCADE
-(2 rows)            */
-          //I see no use for this now
-        val triggerSql = """SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
-        FROM pg_catalog.pg_trigger t
-        WHERE t.tgrelid = '16548' AND NOT t.tgisinternal
-        ORDER BY 1   """
-             toHtml(triggerSql)
-    writer.println("<hr />")
-             /*
-             get parent child relationships:
-               LOG:  statement: SELECT c.oid::pg_catalog.regclass FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i WHERE c.oid=i.inhparent AND i.inhrelid = '16548' ORDER BY inhseqno
-LOG:  statement: SELECT c.oid::pg_catalog.regclass FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i WHERE c.oid=i.inhrelid AND i.inhparent = '16548' ORDER BY c.oid::pg_catalog.regclass::pg_catalog.text;
-
-
-              */
-
-
-  }
-
-}
