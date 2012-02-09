@@ -128,7 +128,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
       case Right( (keys, oaa) ) =>
         new MyTableCreator(keys, oaa).getTableContents
       case Left(errstr) =>
-        <tr><td class="error">errstr</td></tr>
+        <tr><td class="error">{ errstr }</td></tr>
       case _ =>
         <tr><td class="error">code error in { this.getClass }</td></tr>
     }
@@ -182,7 +182,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         new LocksTableCreator(keys, oaa, lockedRelations).getTableContents
 
       case Left(errstr) =>
-        <tr><td class="error">errstr</td></tr>
+        <tr><td class="error">{ errstr }</td></tr>
       case _ =>
         <tr><td class="error">code error in { this.getClass }</td></tr>
     }
