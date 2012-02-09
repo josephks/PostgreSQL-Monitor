@@ -2,11 +2,12 @@ package net.tupari.pgmon.comet
 
 
 import _root_.net.liftweb.util._
+import _root_.net.liftweb.util.TimeHelpers._
 import net.liftweb.common.{Logger, Full}
-import net.liftweb.http.js.JsCmds.{Replace, SetHtml}
-import xml.{TopScope, NodeSeq, Text}
 import net.liftweb.http.{SHtml, S, CometActor}
-import  net.tupari.lib.SimpFactory
+import xml.{TopScope, NodeSeq, Text}
+import net.tupari.lib.SimpFactory
+import net.liftweb.http.js.JsCmds.{Run, After, Replace, SetHtml}
 
 /** Bandwith data point */
 class BwDataPoint(oa: List[Any], block_size: Int){
@@ -125,8 +126,16 @@ class PgBandwithActor  extends CometActor with Logger{
 
   override def lowPriority : PartialFunction[Any, Unit] = {
     case "update" =>
-      //partialUpdate(Replace(rowId, getTableRow))
       doUpdate
-      Schedule.schedule(this, "update", 2500L)
+      //old: server side scheduling of next push:
+      //Schedule.schedule(this, "update", 2500L)
+      //new: client side request for update, to avoid pushing over a bad connection
+      //buggy, seems to activate after no delay at all
+      val timespan =  new  net.liftweb.util.Helpers.TimeSpan(2500)// millis
+      partialUpdate( After(timespan, {
+        info(""" about to send update msg, timespan is : """ + timespan ) ;
+        this ! "update" ;
+        info(""" after send of update msg """);
+        net.liftweb.http.js.JsCmds.Noop  }) )
   }
 }
