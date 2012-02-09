@@ -14,7 +14,7 @@ seq(webSettings :_*)
 
 
 /** Shell */
-shellPrompt := { state => System.getProperty("user.name") + "> " }
+shellPrompt := { state => System.getProperty("user.name") + " " +System.getProperty("user.dir") + " sbt> " }
 
 shellPrompt in ThisBuild := { state => Project.extract(state).currentRef.project + "> " }
 
