@@ -12,8 +12,8 @@ sealed abstract class SchemaFormatter( writer: java.io.PrintWriter) {
 }
 
 private object SchemaFormatHelpers{
-    val timestampRegex = "timestamp.*".r
-                    val timeRegex = "time .*".r
+  val timestampRegex = "timestamp.*".r
+  val timeRegex = "time .*".r
   val charsRegex = """character\((\d+)\)""".r
 }
 
