@@ -1,0 +1,71 @@
+<lift:children>
+
+            <div class="lift:surround?with=default;at=content">
+                <head><title>Postgres Bandwith Example</title>
+<link rel="stylesheet" type="text/css" href="/styles.css" />
+<link rel="stylesheet" type="text/css" href="/colors.css" />
+<meta http-equiv="expires" content="tues, 01 jan 1980 00:00:00 gmt" />
+<meta http-equiv="pragma" content="no-cache" />
+
+<style type="text/css">
+
+   td, th
+{
+min-width:20px;
+ border: 2px groove;
+}
+
+th{
+text-align: center;
+}
+table.bpstable tr td{
+text-align:right;
+min-width:100px;
+}
+
+.sql{
+    font-size: .8em;
+    }
+
+
+</style>
+</head>
+
+
+<h3>Slony status</h3>
+<div lift="comet?type=PgMonCometSlonyStatusActor">
+ <div class="reloadbox"></div> autorefresh
+    <table class="slonytbl" ></table>
+     <div class="slonysql sql" />
+</div>
+
+
+<h3>Bandwith</h3>
+<div lift="comet?type=PgBandwithActor">
+
+                        <div id="#dummyflotchart"  style="hidden:true"></div>
+                                         <script language="javascript" type="text/javascript" src="/classpath/flot/jquery.flot.resize.js" />
+
+ <table class="bpstable"><tbody><tr> <th>Read bps</th>
+<th>Total Write Bps</th>
+<th>Checkpoint Write Bps (good)</th>
+<th>Cleaning Write Bps</th>
+<th>Backend Write Bps (bad)</th><th>as of</th>
+</tr>
+<tr><td> <div class="totalreadbps" /></td>
+<td><div class="totalwritebps" /></td>
+<td><div class="checkpointwritebps" /></td>
+<td><div class="cleanwritebps" /></td>
+<td><div class="backendwritebps" /></td>
+<td><div class="timenow" /></td>
+</tr> </tbody>   </table>
+
+ <!--script language="javascript" type="text/javascript" src="http://people.iola.dk/olau/flot/jquery.flot.resize.js" /-->
+             <div class="bwgraph" style="width:1600px;height:200px;"></div>
+               <div class="bwgraph" style="width:1600px;height:200px;" intervals="100"></div>
+
+</div>
+
+
+ </div>
+</lift:children>
