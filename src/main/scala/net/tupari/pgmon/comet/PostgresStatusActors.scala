@@ -6,13 +6,14 @@ import _root_.net.liftweb.util._
 import _root_.net.liftweb.common.Box
 import    _root_.net.liftweb.util.TimeHelpers._
 import net.liftweb.common.{Logger, Full}
-import net.liftweb.http.js.JsCmds.{Replace, SetHtml}
 import xml.{TopScope, NodeSeq, Text}
 import net.liftweb.http.{SHtml, S, CometActor}
 import net.liftweb.http.js.JsCmds
 import scala.xml.Node
 import net.tupari.lib.SimpFactory
 import net.tupari.pgmon.lib.TableCreator
+import net.liftweb.http.js.JsCmds.{After, Replace, SetHtml}
+import net.liftweb.http.js.JE.JsRaw
 
 class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
@@ -193,9 +194,20 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
       partialUpdate(SetHtml(lockTableId, getLocksTableContents))
       if (hasDate)
           partialUpdate(SetHtml(dateSpanId, Text(now.toString) ))
-      if (refreshOn  )
-        Schedule.schedule(this, "update", 2500L)
+      if (refreshOn  ) {
+        //server side: Schedule.schedule(this, "update", 2500L)
+        //client side, better:
+        //partialUpdate( After(2500 millis, { this ! "update" ;  net.liftweb.http.js.JsCmds.Noop  }) )
+        partialUpdate( After(2500 millis,{jsonSend("Hello", JsRaw("{\"key\" : \"value\"}"))}) )
+      }
 
+  }
+
+  override def  receiveJson = { //: PartialFunction[JValue, JsCmd] = {
+    case jvalue =>
+      info("receiveJson(): jvalue: "+jvalue)
+      this ! "update"
+      net.liftweb.http.js.JsCmds.Noop
   }
 }//class
 
