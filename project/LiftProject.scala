@@ -22,6 +22,8 @@ object MyBuild extends Build{
     libraryDependencies ++= Seq(
       "net.liftweb" %% "lift-webkit" % liftVersion % "compile",
       "net.liftweb" %% "lift-mapper" % liftVersion % "compile",
+      "net.liftweb" %% "lift-widgets" % liftVersion % "compile->default",
+      "javax.persistence" % "persistence-api" % "1.0" % "provided",
       "org.mortbay.jetty" % "jetty" % "6.1.26" % "container",
       "junit" % "junit" % "4.7" % "test",
       "ch.qos.logback" % "logback-classic" % "0.9.26",
@@ -36,7 +38,8 @@ object MyBuild extends Build{
       //  "org.scala-tools.testing" % "test-interface" % "0.5", 
       //  "org.hamcrest" % "hamcrest-all" % "1.1",
       //  "org.mockito" % "mockito-all" % "1.8.5",
-    )
+    )   ,
+      resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
 
   )
 }
