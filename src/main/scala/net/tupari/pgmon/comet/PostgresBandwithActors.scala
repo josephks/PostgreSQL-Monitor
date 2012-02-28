@@ -94,17 +94,15 @@ class PgBandwithActor  extends CometActor with Logger{
         ("backendwritebps" -> new LineOfData( getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getBkndWSince(prevDataPoint))  ))
       )
 
+
+      var flot_widget_rendered = Flot.render(domId, dataLines.map {
+        case (str, lineofdata) => lineofdata.data_to_plot
+      }, new FlotOptions {
+        override def xaxis = Full(FlotTimeseriesOption)
+      }, Flot.script(defaultHtml))
+
       import net.liftweb.http.js.JsCmds._
-      partialUpdate(SetHtml(domId,
-        Flot.render ( domId, dataLines.map {
-          case (str, lineofdata) => lineofdata.data_to_plot
-        }, new FlotOptions {
-          override def   xaxis      = Full( FlotTimeseriesOption)
-        }, Flot.script(defaultHtml)) ++
-            <script language="javascript" type="text/javascript" src="/classpath/flot/jquery.flot.resize.js" />
-        // <script language="javascript" type="text/javascript" src="http://people.iola.dk/olau/flot/jquery.flot.resize.js" />
-      ))
-      //  ^^^ those <script>s were attempts to get the flot resize plugin to work
+      partialUpdate(SetHtml(domId, Common.addResizePluginToFlotWidget(flot_widget_rendered)  ))
     }
     private var pointsDone = 0
     /** Called when a new datapoint comes in.  This method updates the flot chart */
@@ -139,21 +137,6 @@ class PgBandwithActor  extends CometActor with Logger{
         error("code bug: block size query returned: " +x)
     }
   }
-  //an attempt to get the flot resize plugin to work. Doesn't work, so I'll probably remove this soon
-  private def getDummyFlotChart = {
-    val data_values: List[(Double,Double)] = List(  (1.0, 1.0) )
-
-    val data_to_plot = new FlotSerie() {
-      override val data = data_values
-    }
-
-    import net.liftweb.util.Helpers._
-    import net.liftweb.http.js.JsCmds._
-    Flot.render ( "dummyflotchart", List(data_to_plot), new FlotOptions {
-      override def   xaxis      = Full( FlotTimeseriesOption)
-
-    }, Flot.script(defaultHtml))
-  }
 
   def render = {
     ".totalreadbps" #> new ReadBps().getSpan &  
@@ -163,7 +146,6 @@ class PgBandwithActor  extends CometActor with Logger{
     ".backendwritebps" #>   new BackendWriteBps().getSpan &  
     ".timenow" #> new Timenow().getSpan &
     ".cssrtest" #> <span>cssrtest</span> &
-    "#dummyflotchart" #>   getDummyFlotChart &
     ".bwgraph"  #> { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
       (node \ "@id").text match{
         case "" =>
@@ -197,7 +179,7 @@ class PgBandwithActor  extends CometActor with Logger{
   def doUpdate = {
     setDataPoint match{
       case None =>
-        info("doUpdate running")
+        //info("doUpdate running")
         for(span <- spanList){
           val text =  span match{
             case ReadBps() =>

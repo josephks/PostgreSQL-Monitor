@@ -26,6 +26,19 @@ object Common {
     //todo: catch exception, return Left, or convert to use Box
   }
 
+  def addResizePluginToFlotWidget(flot_widget_rendered: scala.xml.NodeSeq)={
+      import xml.transform.{RewriteRule, RuleTransformer}
+      val refseq =  <script type="text/javascript" src="/classpath/flot/jquery.flot.js"></script>
+      object FixFlotSrc  extends RewriteRule {
+        override def transform(n: scala.xml.Node): Seq[scala.xml.Node] ={
+          if (n == refseq) {  //when we find the <script> for jquery.flot.js append <script> for resize plugin right after
+            n ++ <script type="text/javascript" src="/classpath/flot/jquery.flot.resize.js"></script>
+          } else n
+        }
+      }
+       new RuleTransformer(FixFlotSrc).transform(flot_widget_rendered)
+  }
+
 }
 
 
