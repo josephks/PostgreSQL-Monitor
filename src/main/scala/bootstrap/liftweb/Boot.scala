@@ -108,10 +108,13 @@ class Boot extends LazyLoggable{
       DB.defineConnectionManager(DefaultConnectionIdentifier, vendor)
     }
 
-      import net.liftweb.http.ResourceServer
-ResourceServer.allow({
-  case "flot" :: "jquery.flot.resize.js" :: Nil => true
-})
+
+    net.liftweb.widgets.flot.Flot.init
+
+    import net.liftweb.http.ResourceServer
+    ResourceServer.allow({
+      case "flot" :: "jquery.flot.resize.js" :: Nil => true
+    })
 
     logger.info("Boot done")
   }
