@@ -24,6 +24,6 @@ DETAIL:  There are 7 other session(s) using the database.
 
 ## How to Use
 
-I anticipate that in the future I will publish this to a maven repo. Users will create their own projects that depends on this, with templates customized for their system.
+I anticipate that in the future I will publish this to a maven repo. Users will create their own projects that have dependencies on this, with templates customized for their system.
 
 For now do a git checkout, start sbt, and run ```container:start``` at the sbt prompt.  This will start a jetty server on port 8080 running the webapp (with no access control!).  The alternative is to run ```package-war``` to generate a war that you can then run on your container of choice.
