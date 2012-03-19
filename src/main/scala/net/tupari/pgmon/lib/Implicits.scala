@@ -1,11 +1,9 @@
 package net.tupari.pgmon.lib
 
-/**  <p>Implicity conversion live here.</p>
- * Created by IntelliJ IDEA.
+/**  <p>Implicit conversions live here.</p>
  * User: jks
  * Date: 2/28/12
  * Time: 10:53 PM
- * To change this template use File | Settings | File Templates.
  */
 
 object Implicits {
@@ -15,5 +13,15 @@ object Implicits {
   }
   implicit def nodeToSearchableNode(nodebuf:scala.xml.NodeBuffer )  = {
        new SearchableNodeSeq(nodebuf)
+  }
+
+  implicit def stringToConnectionIdentifier(name: String) = {
+    name match{
+      case null => null
+      case _ =>
+        new net.liftweb.db.ConnectionIdentifier {
+          val jndiName = name
+        }
+    } //match
   }
 }
