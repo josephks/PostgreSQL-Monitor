@@ -13,6 +13,8 @@ import mapper._
 
 import code.model._
 import net.tupari.pgmon.schemagen.SchemaPrinter
+import net.tupari.pgmon.lib.Implicits._
+import java.net.URL
 
 
 /**
@@ -72,41 +74,68 @@ class Boot extends LazyLoggable{
     S.addAround(DB.buildLoanWrapper)
 
     logger.info("Boot: setting db connection")
-    Class.forName("org.postgresql.Driver")
-    if (!DB.jndiJdbcConnAvailable_?) {
-      //Creator a vendor class that extends StandardDBVendor.
-      //The point of this is to set the appliation_name in pg 9 and above
-      val vendor =
-        new StandardDBVendor(Props.get("db.driver") openOr "org.postgresql.Driver",
-          Props.get("db.url") openOr  "jdbc:postgresql://localhost/template1",
-          Props.get("db.user"), Props.get("db.password")) {
-          override def createOne: Box[java.sql.Connection] =  {
-            val ans = super.createOne
-            ans match{
-              case Full(conn) =>
-                val meta = conn.getMetaData
-                (meta.getDatabaseProductName,meta.getDatabaseMajorVersion) match {
-                  case (PostgreSqlDriver.name, major) if (major >= 9 ) =>
-                    val st = conn.createStatement
-                    try {
-                      st.execute("SET application_name = 'PgMon'")
-                    }catch{
-                      case ex => logger.warn(ex)
-                    }finally{
-                      st.close
-                    }
-                    case _ =>
-                }
-              case _ =>
-            }
-            ans
-          }
-        }
+    //Class.forName("org.postgresql.Driver")
+    Class.forName(classOf[org.postgresql.Driver].getName)
 
+    //private method for getting db vendors
+    def getDbVendor(url: String, user: Box[String], passwd: Box[String]): mapper.StandardDBVendor = {
+      //Creator a vendor class that extends StandardDBVendor.
+      new StandardDBVendor(Props.get("db.driver") openOr "org.postgresql.Driver",
+        url, user, passwd) {
+        override def createOne: Box[java.sql.Connection] = {
+          val ans = super.createOne
+          ans match {
+            case Full(conn) =>
+              val meta = conn.getMetaData
+              (meta.getDatabaseProductName, meta.getDatabaseMajorVersion) match {
+                case (PostgreSqlDriver.name, major) if (major >= 9) =>
+                  val st = conn.createStatement
+                  try {
+                    //The point of this is to set the appliation_name in pg 9 and above
+                    st.execute("SET application_name = 'PgMon'")
+                  } catch {
+                    case ex => logger.warn(ex)
+                  } finally {
+                    st.close
+                  }
+                case _ =>
+              }
+            case _ =>
+          }
+          ans
+        }
+      }
+    } //def
+    if (!DB.jndiJdbcConnAvailable_?) {
+      val vendor = getDbVendor(Props.get("db.url") openOr "jdbc:postgresql://localhost/template1", Props.get("db.user"), Props.get("db.password"))
       LiftRules.unloadHooks.append(vendor.closeAllConnections_! _)
 
       DB.defineConnectionManager(DefaultConnectionIdentifier, vendor)
     }
+    val doneNames = scala.collection.mutable.Set[String](DefaultConnectionIdentifier.jndiName)
+    for (str <- Props.get("secondary.database.names") ;
+         rawname <- str.split(',')){
+           val name = rawname.trim
+      if (doneNames.contains(name)){
+        logger.error("There already is a db connection named '"+name+"'")
+      } else if (name.length() > 0){
+        Props.get("db."+name+".url") match{
+          case Full(uri) =>
+            val vendor = getDbVendor(uri, Props.get("db."+name+".user"), Props.get("db."+name+".password"))
+            LiftRules.unloadHooks.append(vendor.closeAllConnections_! _)
+            DB.defineConnectionManager(name, vendor)
+            try{
+              net.tupari.pgmon.lib.ConnectionData.addUri(name, uri )
+            }catch{
+              case e => logger.error("could not determine ip addr for seconary db  '"+name+"'", e)
+            }
+          case _ => logger.error("secondary db '"+name+"' does not have a url configured")
+        }
+        doneNames += name
+      }
+    }  //for
+    if (doneNames.size > 1)
+      logger.info("created connections for these secondary dbs: "+doneNames+" ipmap: "+net.tupari.pgmon.lib.ConnectionData.ipmap )
 
 
     net.liftweb.widgets.flot.Flot.init
