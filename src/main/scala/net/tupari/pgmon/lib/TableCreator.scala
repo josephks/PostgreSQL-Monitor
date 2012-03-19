@@ -8,8 +8,19 @@ import xml.{NodeSeq, Node}
  * User: jks
  * Date: 1/7/12
  * Time: 9:11 PM
- * To change this template use File | Settings | File Templates.
  */
+
+object TableCreator{
+  /** Create a TableCreator from a Map.  The fields end up in random order, so this is not recommended */
+  def apply(map: Map[String, Any]) = {
+    val (kl, vl) = ((List[String](), List[Any]()) /: map) {
+     // case ((kl:List[String], vl:List[Any]) , (k, v)) => (k :: kl, v :: vl)
+      case ((kl, vl) , (k, v)) => (k :: kl, v :: vl)
+    }
+    new TableCreator(kl, List(vl))
+  }
+   def apply( keys: List[String], data: List[List[Any]]) = new TableCreator(keys, data)
+}
 
 class TableCreator(keys: List[String], data: List[List[Any]]) extends Logger{
   //val nodeBuf = new scala.xml.NodeBuffer
