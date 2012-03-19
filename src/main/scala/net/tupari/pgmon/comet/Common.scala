@@ -2,21 +2,26 @@ package net.tupari.pgmon.comet
 
 import net.liftweb.common.{Logger, Full}
 import xml.{NodeSeq, Node}
+import net.tupari.pgmon.lib.Implicits
+import net.liftweb.db.{DefaultConnectionIdentifier, ConnectionIdentifier}
 
 /**
  * Created by IntelliJ IDEA.
  * User: jks
  * Date: 1/7/12
  * Time: 9:11 PM
- * To change this template use File | Settings | File Templates.
  */
 
 object Common {
 
   //returns an either (tuple, error string)
-  def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
+    def getData(q: String, target_host: String = null, cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
+      val connectionIdentifier = Implicits.stringToConnectionIdentifier(target_host)
+      getDataFromConnection(q, Option(connectionIdentifier).getOrElse(DefaultConnectionIdentifier), cur_name)
+    }
+  def getDataFromConnection(q: String, target_host: ConnectionIdentifier , cur_name: String = null): Either[String, Tuple2[ List[String],List[List[Any]] ] ] = {
     try{
-      Right(net.liftweb.db.DB.performQuery(q)   )
+      Right(net.liftweb.db.DB.performQuery(q, Nil, target_host)   )
     }catch{
       //I don't know why but a query that returns no data is considered an error
       case ex: org.postgresql.util.PSQLException  if (ex.getMessage.contains("No results were returned by the query."))   =>
