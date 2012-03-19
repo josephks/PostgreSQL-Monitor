@@ -15,6 +15,8 @@ class SearchableNodeSeq(nodeseq:scala.xml.NodeSeq) {
   def searchForNodeWithAttrib( tup: (String, String)): Option[scala.xml.Node] = {
     searchForNodeWithAttrib0(  nodeseq, tup)
   }
+  //todo: instead of returning a Node, return something that could be implicity be turned into a Node, or
+  //could be used in other ways
   private def searchForNodeWithAttrib0(nodeseq:scala.xml.NodeSeq,  tup: (String, String)): Option[scala.xml.Node] = {
     tup match{
       case (name, value) if (name != null && value != null && name.length() > 0 && value.length() > 0) =>
@@ -27,5 +29,17 @@ class SearchableNodeSeq(nodeseq:scala.xml.NodeSeq) {
         }
         return None
     }
+  }
+  //todo: do something more DSL like, for example: {@code val newxml =  <xml /> searchForNodeWithAttrib("x", "y") replaceWith <newnode /> }
+  def replaceNodeWith(target:scala.xml.Node, replacement:scala.xml.Node ): scala.xml.NodeSeq = {
+    import xml.transform.{RewriteRule, RuleTransformer}
+    object NodeReplacer  extends RewriteRule {
+      override def transform(n: scala.xml.Node): Seq[scala.xml.Node] ={
+        if (n == target) {
+          replacement
+        } else n
+      }
+    }
+    new RuleTransformer(NodeReplacer).transform(nodeseq)
   }
 }
