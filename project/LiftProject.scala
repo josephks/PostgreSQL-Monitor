@@ -17,14 +17,14 @@ object MyBuild extends Build{
 
   lazy val JavaNet = "Java.net Maven2 Repository" at "http://download.java.net/maven/2/"
 
-   lazy val root = Project("root", file(".")) settings(
+   lazy val root = Project("root", file(".")) settings(  (  Seq(
 
     libraryDependencies ++= Seq(
       "net.liftweb" %% "lift-webkit" % liftVersion % "compile",
       "net.liftweb" %% "lift-mapper" % liftVersion % "compile",
       "net.liftweb" %% "lift-widgets" % liftVersion % "compile->default",
       "javax.persistence" % "persistence-api" % "1.0" % "provided",
-      "org.mortbay.jetty" % "jetty" % "6.1.26" % "container",
+      "org.mortbay.jetty" % "jetty" % "6.1.26" % "container,test",
       "junit" % "junit" % "4.7" % "test",
       "ch.qos.logback" % "logback-classic" % "0.9.26",
       "org.scala-tools.testing" %% "specs" % "1.6.9" % "test",
@@ -39,7 +39,19 @@ object MyBuild extends Build{
       //  "org.hamcrest" % "hamcrest-all" % "1.1",
       //  "org.mockito" % "mockito-all" % "1.8.5",
     )   ,
-      resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
+     resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"  ,
 
-  )
+     publishTo <<= (version) { version: String =>
+       Some(Resolver.file("file",  Path.userHome / "work/josephks.github.com/maven-repo" / {
+         if  (version.trim.endsWith("SNAPSHOT"))  "snapshots"
+         else                                    "releases/" }    ))
+     }
+     //Instead of putting "seq(webSettings :_*)" into build.sbt appending settings here
+   ) ++  com.github.siasia.WebPlugin.webSettings
+     ++ Seq (
+     publishArtifact in (Compile, packageBin) := true,
+     publishArtifact in Test := false,
+     publishArtifact in com.github.siasia.PluginKeys.packageWar := false)
+     ).toArray: _* )
+
 }

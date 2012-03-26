@@ -1,14 +1,14 @@
 /** Project */
 name := "PostgreSQL Monitor"
 
-version := "0.1"
+version := "0.1-SNAPSHOT"
 
-organization := "Lift"
+organization := "net.tupari"
 
 scalaVersion := "2.9.1"
 
 //for web plugin
-seq(webSettings :_*)
+//seq(webSettings :_*)
 
 
 
