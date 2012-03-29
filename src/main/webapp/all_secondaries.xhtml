@@ -1,0 +1,89 @@
+<lift:children>
+
+            <div class="lift:surround?with=default;at=content">
+                <head><title>Postgres Secondary Monitoring Example</title>
+<link rel="stylesheet" type="text/css" href="/styles.css" />
+<link rel="stylesheet" type="text/css" href="/colors.css" />
+<meta http-equiv="expires" content="tues, 01 jan 1980 00:00:00 gmt" />
+<meta http-equiv="pragma" content="no-cache" />
+   <style type="text/css">
+
+   td, th
+{
+min-width:20px;
+ border: 2px groove;
+}
+
+th{
+text-align: center;
+}
+.sql{
+    font-size: .8em;
+    }
+
+.insync{
+    background-color: lime !important;
+    }
+
+.outofsync{
+    background-color: red !important;
+}
+
+</style>
+
+                       </head>
+
+                <h3>Secondaries</h3>
+                <div class="lift:Secondaries.allsecondaries">
+
+                <div class="secondary_actor" > <!-- comet?type=PgSecondaryActor"-->
+                    <h4 class="secondary_name"></h4>
+                    <div class="reptable"  secondary="thiswillbereplaced" >
+                        <!--<div class="wholetable" />-->
+                        <table>
+                            <tr><th>client</th>
+                                <td><div class="client_addr"/>&#160;:&#160;<div class="client_port"/>  </td>
+                            </tr>
+
+                            <tr><th>backend start</th>
+                                <td><div class="backend_start"/>  </td>
+                            </tr>
+
+                            <tr><th>state</th>
+                                <td><div class="state"/>  </td>
+                            </tr>
+
+                            <tr><th>primary: sent location</th>
+                                <td><div class="sent_location"/>  </td>
+                            </tr>
+                            <tr><th>secondary: write/flush/replay location</th>
+                                <td><div class="write_location"/>  <div class="flush_location"/> <div class="replay_location"/> </td>
+                            </tr>
+
+                            <tr><th>sync state</th>
+                                <td><div class="sync_state"/>  </td>
+                            </tr>
+                            <tr><th>pg_is_in_recovery</th><td><div class="pg_is_in_recovery"/>  </td></tr>
+
+                            <tr><th>pg_last_xlog_receive_location</th><td><div class="pg_last_xlog_receive_location"/>  </td></tr>
+
+                            <tr><th>pg_last_xlog_replay_location</th><td><div class="pg_last_xlog_replay_location"/>  </td></tr>
+
+                            <tr><th>pg_last_xact_replay_timestamp</th><td><div class="pg_last_xact_replay_timestamp"/>  </td></tr>
+                             <tr><th>primary server version </th><td><div class="primary_version" />  </td></tr>
+                             <tr><th>secondary server version </th><td><div class="secondary_version"/>  </td></tr>
+
+
+                        </table>
+                        <div class="primarysql" />  <br />
+                        <div class="secondarysql" />
+              </div>
+                </div>
+    </div>
+
+
+
+              </div>
+</lift:children>
+
+
