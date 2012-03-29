@@ -20,20 +20,16 @@ import net.tupari.pgmon.lib.{TableCreator, ConnectionData}
  * Time: 11:47 AM
  */
 
-class PostgresSecondariesActors {
-
-}
-class PgSecondaryActor  extends CometActor with Logger{
+class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
   // http://www.postgresql.org/docs/9.1/interactive/monitoring-stats.html#MONITORING-STATS-VIEWS-TABLE
-  private val primary_sql = "select * from pg_stat_replication;"
-  private val secondary_sql = "select pg_is_in_recovery(), pg_last_xlog_receive_location(), pg_last_xlog_replay_location(),pg_last_xact_replay_timestamp();"
+  private val primary_sql = "select *, version() as primary_version from pg_stat_replication;"
+  private val secondary_sql = "select pg_is_in_recovery(), pg_last_xlog_receive_location()," +
+    " pg_last_xlog_replay_location(),pg_last_xact_replay_timestamp(), version() as secondary_version ;"
 
   lazy val primary: ConnectionIdentifier = (defaultHtml \ "@primary").text.trim match{
     case "" => DefaultConnectionIdentifier
     case s => s
   }
-
-
   override def localSetup() = {  }
 
   /** Future that holds info from the primary server */
@@ -64,7 +60,7 @@ class PgSecondaryActor  extends CometActor with Logger{
     private var updatableSpans : List[UpdatableSpan] = Nil
 
     lazy val realSpan = {
-          info("realspan called, orig is : "+originalNode)
+      logger.info("realspan called, orig is : "+originalNode)
       import xml.transform.{RewriteRule, RuleTransformer}
       object rwr  extends RewriteRule {
         override def transform(n: scala.xml.Node): Seq[scala.xml.Node] ={
@@ -97,7 +93,7 @@ class PgSecondaryActor  extends CometActor with Logger{
 
     val id = "secondary"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
     def getSpan = if (secondary == "") { <span class="error">Secondary is not set</span> } else {
-      info("getSpan returning " + realSpan)
+      logger.info("getSpan returning " + realSpan)
       realSpan
     }
     def doUpdate() {
@@ -108,7 +104,7 @@ class PgSecondaryActor  extends CometActor with Logger{
           map = keys.zip(oaa(0)).toMap
 
         case Left(errstr) =>
-          error(errstr)
+          logger.error(errstr)
       }
       try{
         //BUG: don't use foreach: primaryFut.foreach({
@@ -118,14 +114,14 @@ class PgSecondaryActor  extends CometActor with Logger{
           map ++=   keys.zip(oaa(0)).toMap //todo: fix, find data row for this secondary based on ip address and port
 
         case Left(errstr) =>
-          error(errstr)
+          logger.error(errstr)
       }
         }catch{
-        case e => info("primaryFut.foreach caused ex",e)
+        case e => logger.info("primaryFut.foreach caused ex",e)
       }
-      info("doing updatableSpans.foreach")
+      logger.info("doing updatableSpans.foreach")
       updatableSpans.foreach( _.update(map))
-      info("done with updatableSpans.foreach")
+      logger.info("done with updatableSpans.foreach")
     }
   } //SecondaryMonitor
 
@@ -133,12 +129,12 @@ class PgSecondaryActor  extends CometActor with Logger{
 
   def render = {
     val ans = render0
-    info("render returing "+ans)
+    logger.info("render returing "+ans)
     Schedule.schedule(this, "update", 1000L)
     ans
   }
   def render0 = {
-    info("render() called primary="+primary)
+    logger.info("render() called primary="+primary)
     ".reptable" #>  { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
       val ans = new SecondaryMonitor( node )
       secondaryMonitorList = ans :: secondaryMonitorList
@@ -147,21 +143,21 @@ class PgSecondaryActor  extends CometActor with Logger{
   }
 
   private def doUpdate() {
-    info("doUpdate starting")
+    logger.info("doUpdate starting")
     //first ste primaryFut.  All secondaries will share this information
     try{
       primaryFut = scala.actors.Futures.future{ Common.getDataFromConnection(primary_sql, target_host = primary) }
     }catch{
-      case e => info("setting primaryFut caused ex",e)
+      case e => logger.info("setting primaryFut caused ex",e)
     }
     secondaryMonitorList.foreach({ x =>
       try{
         x.doUpdate()
       }catch{
-        case e => info("secondaryMonitor.doUpdate caused "+e.getClass.getName+" : "+e.getMessage)
+        case e => logger.info("secondaryMonitor.doUpdate caused "+e.getClass.getName+" : "+e.getMessage)
       }
     } )
-    info("doUpdate finished")
+    logger.info("doUpdate finished")
   }
 
   override def lowPriority : PartialFunction[Any, Unit] = {
@@ -175,15 +171,15 @@ class PgSecondaryActor  extends CometActor with Logger{
       }else{
         //new: client side request for update, to avoid pushing over a bad connection
         val json_send_jscmd = jsonSend("update")
-        debug("json send cmd: "+json_send_jscmd)
+        logger.debug("json send cmd: "+json_send_jscmd)
         partialUpdate( After(2000 millis, json_send_jscmd   ))
-        debug("sent after command")
+        logger.debug("sent after command")
       }
   }
 
   override def  receiveJson = { //: PartialFunction[JValue, JsCmd] = {
     case jvalue =>
-      debug("receiveJson(): jvalue: "+jvalue)
+      logger.debug("receiveJson(): jvalue: "+jvalue)
       this ! "update"
       net.liftweb.http.js.JsCmds.Noop
   }
