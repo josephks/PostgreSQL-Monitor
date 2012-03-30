@@ -56,7 +56,7 @@ class Secondaries extends DispatchSnippet with net.liftweb.common.LazyLoggable{
     //allow user to override the place we get the list of secondaries from
     val propname = Props.get("secondary.database.list.propname").getOrElse("secondary.database.names")
     val str = Props.get(propname).getOrElse("")
-
+     logger.trace("allSecondaryNames(): parsing "+str+", props: "+Props.props)
     ( for ( rawname <- str.split(',') if rawname.trim.length > 0 )
     yield rawname.trim ).toList
   }
