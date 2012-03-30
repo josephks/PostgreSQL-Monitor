@@ -46,7 +46,10 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
       def getSpan = <span id={ id } >...</span>
       def update(map: Map[String, Any]) = {
         //todo: better error handling
-        partialUpdate(SetHtml(id, scala.xml.Text( map.get(fieldname).getOrElse("").toString ) ))
+
+        //map.get() can return a Some(null), so defend against that
+        val text = map.get(fieldname).getOrElse("") match { case null => "" ; case x => x.toString }
+        partialUpdate(SetHtml(id, scala.xml.Text( text ) ))
       }
     }
     /** A span that generates a table from all the available fields, for those too lazy to create a custom template.
@@ -60,7 +63,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
     private var updatableSpans : List[UpdatableSpan] = Nil
 
     lazy val realSpan = {
-      logger.info("realspan called, orig is : "+originalNode)
+      logger.debug("realspan called, orig is : "+originalNode)
       import xml.transform.{RewriteRule, RuleTransformer}
       object rwr  extends RewriteRule {
         override def transform(n: scala.xml.Node): Seq[scala.xml.Node] ={
@@ -93,7 +96,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
 
     val id = "secondary"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
     def getSpan = if (secondary == "") { <span class="error">Secondary is not set</span> } else {
-      logger.info("getSpan returning " + realSpan)
+      logger.debug("getSpan returning " + realSpan)
       realSpan
     }
     def doUpdate() {
@@ -117,11 +120,9 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
           logger.error(errstr)
       }
         }catch{
-        case e => logger.info("primaryFut.foreach caused ex",e)
+        case e => logger.warn("primaryFut.foreach caused ex",e)
       }
-      logger.info("doing updatableSpans.foreach")
       updatableSpans.foreach( _.update(map))
-      logger.info("done with updatableSpans.foreach")
     }
   } //SecondaryMonitor
 
@@ -129,12 +130,12 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
 
   def render = {
     val ans = render0
-    logger.info("render returing "+ans)
+    logger.debug("render returing "+ans)
     Schedule.schedule(this, "update", 1000L)
     ans
   }
   def render0 = {
-    logger.info("render() called primary="+primary)
+    logger.debug("render() called primary="+primary)
     ".reptable" #>  { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
       val ans = new SecondaryMonitor( node )
       secondaryMonitorList = ans :: secondaryMonitorList
@@ -143,21 +144,21 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
   }
 
   private def doUpdate() {
-    logger.info("doUpdate starting")
+    logger.debug("doUpdate starting")
     //first ste primaryFut.  All secondaries will share this information
     try{
       primaryFut = scala.actors.Futures.future{ Common.getDataFromConnection(primary_sql, target_host = primary) }
     }catch{
-      case e => logger.info("setting primaryFut caused ex",e)
+      case e => logger.warn("setting primaryFut caused ex",e)
     }
     secondaryMonitorList.foreach({ x =>
       try{
         x.doUpdate()
       }catch{
-        case e => logger.info("secondaryMonitor.doUpdate caused "+e.getClass.getName+" : "+e.getMessage)
+        case e => logger.warn("secondaryMonitor.doUpdate caused "+e.getClass.getName+" : "+e.getMessage)
       }
     } )
-    logger.info("doUpdate finished")
+    logger.debug("doUpdate finished")
   }
 
   override def lowPriority : PartialFunction[Any, Unit] = {
