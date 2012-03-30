@@ -46,7 +46,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
       def getSpan = <span id={ id } >...</span>
       def update(map: Map[String, Any]) = {
         //todo: better error handling
-        partialUpdate(SetHtml(id, <div>{ map.get(fieldname).getOrElse("")  }</div>))
+        partialUpdate(SetHtml(id, scala.xml.Text( map.get(fieldname).getOrElse("").toString ) ))
       }
     }
     /** A span that generates a table from all the available fields, for those too lazy to create a custom template.
@@ -66,7 +66,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
         override def transform(n: scala.xml.Node): Seq[scala.xml.Node] ={
           n match{
             //doesn't work: case <div  >{ _ }</div> if (n \ "@class").text != "" =>
-             case _ if n != originalNode && n.label == "div" && (n \ "@class").text != "" =>
+             case _ if n != originalNode && (n.label == "div" || n.label == "span") && (n \ "@class").text != "" =>
               (n \ "@class").text  match{
                 //case "chart" => n  //don't replace the top level
                 case "wholetable" =>
