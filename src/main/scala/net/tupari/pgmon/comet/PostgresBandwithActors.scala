@@ -10,7 +10,9 @@ import net.tupari.lib.SimpFactory
 import net.liftweb.http.js.JE.JsRaw
 import net.liftweb.http.js.JsCmds._
 
-import net.liftweb.widgets.flot._
+import net.tupari.pgmon.lib.Implicits._
+import net.liftweb.db.{DefaultConnectionIdentifier, ConnectionIdentifier}
+import net.tupari.pgmon.lib.XmlUtil
 
 /** Bandwith data point */
 class BwDataPoint(oa: List[Any], block_size: Int, val baseline: Boolean = false){
@@ -32,25 +34,26 @@ class BwDataPoint(oa: List[Any], block_size: Int, val baseline: Boolean = false)
   def getBaseline = new BwDataPoint(List(stats_reset, 0, 0, 0, 0, stats_reset, true), block_size)
 }
 
-private object FlotTimeseriesOption extends  FlotAxisOptions{
-  override def mode = Full("time")
-}
-
-
-class PgBandwithActor  extends CometActor with Logger{
+class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable with FlotCharts with UpdateableSpans{
 
   val idBase = "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
+  private var dbConn: ConnectionIdentifier = DefaultConnectionIdentifier
 
   private var block_size = 8 * 1024 //8k is the default value
    //see: http://www.postgresql.org/docs/9.1/static/monitoring-stats.html
   private val sql = "select now(),  buffers_alloc , buffers_checkpoint , buffers_clean , buffers_backend, stats_reset from pg_stat_bgwriter";
 
   private var prevDataPoint:BwDataPoint = null
-  private  var lastDataPoint:BwDataPoint = null
+  private var lastDataPoint:BwDataPoint = null
 
   private var spanList:List[Dataspan] = Nil
   
-
+   class UpdateableSpan(val uuid: String){
+    def getSpan(node: scala.xml.Node): scala.xml.Elem = <span id={ uuid } >{ node }</span>
+    def getSpan: scala.xml.Elem = getSpan(Text("..."))//return a placeholder span to be inserted into html on doc creation
+    def setHtml(node: scala.xml.Node)  = partialUpdate(SetHtml(uuid, node))
+    def setHtml(text: String)  = partialUpdate(SetHtml(uuid, <div>{ text }</div>))
+  }
 
   private sealed abstract class Dataspan(myIdBase: String){
     //seems hackish to me, to save a reference to myself in the constructor
@@ -66,63 +69,28 @@ class PgBandwithActor  extends CometActor with Logger{
   private case class BackendWriteBps() extends Dataspan("bkndbps"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
   private case class Timenow() extends Dataspan("timenow"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
 
-  //represents a flot chart. In the future I will add options to render different kinds of charts,
-  //so you could split data over different charts, or have charts with different time periods
-  private case class FlotChart(origNode: scala.xml.NodeSeq){
-    /** Number of data points on the x axis.  Updates will drop old data points off the left of the chart
-     * to remain under this limit */
-    private val timepoints = (origNode \ "@intervals").text match { case "" => 10 case x => x.toInt}
-    /** dom id needed for javascript updates */
-    private val domId = (origNode \ "@id").text
-    private var dataLines = List[(String, LineOfData)]()
-
+  private class FlotChartHolder(origHtml: scala.xml.Elem){
     /** Holds data for rendering a line on the chart
      * @param getNextDatapoint A function for getting the next datapoint to pass to flot */
-    private case class LineOfData (  val getNextDatapoint: () => (Double,Double)){
-      private[this] val data_values = List(getNextDatapoint())
-      val data_to_plot:FlotSerie = new FlotSerie() {
-        override val data = data_values
-      }
-    }
+    private case class LineOfData ( labelStr: String,  getNextDatapoint: () => (Double,Double))
 
-    private def init(){ //create the flot chart
-      dataLines = List (
-        ("readbps" -> new LineOfData( getNextDatapoint = () => (lastDataPoint.timestamp.getTime, lastDataPoint.getBpsReadSince(prevDataPoint)) )) ,
-        ("writebps" -> new LineOfData( getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getBpsWrittenSince(prevDataPoint)) )) ,
-        ("checkpointwritebps" -> new LineOfData( getNextDatapoint = () =>(lastDataPoint.timestamp.getTime, lastDataPoint.getChptWSince(prevDataPoint)) ))  ,
-        ("cleanwritebps" -> new LineOfData( getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getCleanWSince(prevDataPoint)) )) ,
-        ("backendwritebps" -> new LineOfData( getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getBkndWSince(prevDataPoint))  ))
-      )
+    private val dataLines = List (
+      ("readbps" -> new LineOfData("readbps", getNextDatapoint = () => (lastDataPoint.timestamp.getTime, lastDataPoint.getBpsReadSince(prevDataPoint)) )) ,
+      ("writebps" -> new LineOfData("writebps" ,getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getBpsWrittenSince(prevDataPoint)) )) ,
+      ("checkpointwritebps" -> new LineOfData("checkpointwritebps" ,getNextDatapoint = () =>(lastDataPoint.timestamp.getTime, lastDataPoint.getChptWSince(prevDataPoint)) ))  ,
+      ("cleanwritebps" -> new LineOfData("cleanwritebps" ,getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getCleanWSince(prevDataPoint)) )) ,
+      ("backendwritebps" -> new LineOfData("backendwritebps" ,getNextDatapoint = () => (lastDataPoint.timestamp.getTime,lastDataPoint.getBkndWSince(prevDataPoint))  ))
+    )
+    val flotChart = new FlotChart(origHtml, dataLines.map { case (str, _) => str},
+      List("blue","black","green","yellow","red") )
 
-
-      var flot_widget_rendered = Flot.render(domId, dataLines.map {
-        case (str, lineofdata) => lineofdata.data_to_plot
-      }, new FlotOptions {
-        override def xaxis = Full(FlotTimeseriesOption)
-      }, Flot.script(defaultHtml))
-
-      import net.liftweb.http.js.JsCmds._
-      partialUpdate(SetHtml(domId, Common.addResizePluginToFlotWidget(flot_widget_rendered)  ))
-    }
-    private var pointsDone = 0
-    /** Called when a new datapoint comes in.  This method updates the flot chart */
     def onDataUpdate() = {
-      if ( pointsDone == 0 || prevDataPoint.baseline)  {
-        init()
-        pointsDone = 1
-      } else {
-        val doPop = pointsDone >= timepoints  //If we have done timepoints worth of data already drop old datapoints
-        pointsDone += 1
-        partialUpdate( JsFlotAppendData( domId,
-          dataLines.map{ case (_ , lod) => lod.data_to_plot},
-          dataLines.map{ case (_, lod) => lod.getNextDatapoint() },
-          doPop)   )
-      }
+      flotChart.doUpdate( dataLines.map{ case (_, lod) => lod.getNextDatapoint() })
     }
+  } //FlotChartHolder
 
-  } //class FlotChart
 
-  private var flotCharts:List[FlotChart] = Nil
+  private var flotChartHolders: List[FlotChartHolder] = Nil
 
   override def localSetup() = {
     //todo: share this. There is no reason to do this every time the status page is loaded
@@ -132,13 +100,26 @@ class PgBandwithActor  extends CometActor with Logger{
       case Right( (keys, List(List(bs))) ) =>
         block_size = bs.asInstanceOf[String].toInt
         case Left(errstr) =>
-        error(errstr)
+        logger.error(errstr)
       case x  =>
-        error("code bug: block size query returned: " +x)
+        logger.error("code bug: block size query returned: " +x)
     }
+    (defaultHtml \ "@db").text match {
+      case "" =>
+      case dbname => dbConn = dbname
+    }
+    logger.info("defaultHtml is: "+defaultHtml)
+  }
+  //called from render, below.
+  //Handle the node with class bwgraph.  If it has a <div class="flotchart"  /> in it use that for the flot chart, otherwise use the node itself.
+  private def getFlotChartXml(outerdiv: scala.xml.NodeSeq):scala.xml.NodeSeq = {
+    val holder = new FlotChartHolder(XmlUtil.toElem(outerdiv))
+       flotChartHolders = holder ::  flotChartHolders
+    holder.flotChart.getSpan
   }
 
   def render = {
+    logger.trace("render() called dbconn="+dbConn)
     ".totalreadbps" #> new ReadBps().getSpan &  
     ".totalwritebps" #> new WriteBps().getSpan &  
     ".checkpointwritebps" #> new CheckpointWriteBps().getSpan &  
@@ -147,17 +128,8 @@ class PgBandwithActor  extends CometActor with Logger{
     ".timenow" #> new Timenow().getSpan &
     ".cssrtest" #> <span>cssrtest</span> &
     ".bwgraph"  #> { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
-      (node \ "@id").text match{
-        case "" =>
-          //if node does not have an id add one
-          val newNode = node.asInstanceOf[scala.xml.Elem] % new scala.xml.UnprefixedAttribute("id", "graph"+SimpFactory.inject[ SimpFactory.UniqueNumber].get, scala.xml.Null)
-          flotCharts = new FlotChart(newNode) :: flotCharts
-          newNode
-        case _ =>
-           flotCharts = new FlotChart(node) :: flotCharts
-          node
-      } //match
-    }   }
+      getFlotChartXml(node)
+    }  }
   }
 
   /** Return an error string, if any */
@@ -179,7 +151,7 @@ class PgBandwithActor  extends CometActor with Logger{
   def doUpdate = {
     setDataPoint match{
       case None =>
-        //info("doUpdate running")
+        logger.debug("doUpdate running")
         for(span <- spanList){
           val text =  span match{
             case ReadBps() =>
@@ -198,7 +170,7 @@ class PgBandwithActor  extends CometActor with Logger{
           partialUpdate(SetHtml(span.getId, <div>{ text }</div>))
           //info("did partial update for span "+span.getId)
         } //for span
-        for(flotChart <- flotCharts){
+        for(flotChart <- flotChartHolders){
           flotChart.onDataUpdate()
         }
       case Some(errstr) =>
@@ -220,16 +192,16 @@ class PgBandwithActor  extends CometActor with Logger{
         //new: client side request for update, to avoid pushing over a bad connection
         val json_send_jscmd = //jsonSend(net.liftweb.http.js.JE.Num(666))
           jsonSend("update")
-        debug("json send cmd: "+json_send_jscmd)
+        logger.debug("json send cmd: "+json_send_jscmd)
         partialUpdate( After(2000 millis, json_send_jscmd   ))
         //partialUpdate( After(2500 millis,{jsonSend( net.liftweb.http.js.JE.Num(666)) }) )
-        debug("sent after command")
+        logger.debug("sent after command")
       }
   }
 
     override def  receiveJson = { //: PartialFunction[JValue, JsCmd] = {
     case jvalue =>
-             debug("receiveJson(): jvalue: "+jvalue)
+            logger.debug("receiveJson(): jvalue: "+jvalue)
             this ! "update"
             net.liftweb.http.js.JsCmds.Noop
 //2012-02-09 23:42:02,041 [pool-186-thread-8] INFO  n.t.p.c.PgBandwithActor - receiveJson(): jvalue: JObject(List(JField(command,JInt(666)), JField(params,JBool(false))))
