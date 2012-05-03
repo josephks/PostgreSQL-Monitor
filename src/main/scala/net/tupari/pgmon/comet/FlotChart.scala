@@ -90,7 +90,7 @@ trait FlotCharts {
 
       val USE_CLIENT_SIDE = true //use client side javascript alternative
 
-      val legend_checkbox_server_side =  <label> {SHtml.ajaxCheckbox (true, { (b: Boolean) =>
+      lazy val legend_checkbox_server_side =  <label> {SHtml.ajaxCheckbox (true, { (b: Boolean) =>
         val newOptions = new MyFlotOptions{ override def legend = Full(new FlotLegendOptions{ override def show = Full(b)})}
         //Doesn't work on its own. The options passed into renderFlotShow() are not actually used in its code
         //                         Flot.renderFlotShow ( uuid,   serieToRender, newOptions, Noop)
@@ -100,7 +100,7 @@ trait FlotCharts {
       } ) }Legend </label>
 
       if (USE_CLIENT_SIDE){ //If using client side alternatives declare functions to be used in the onclick="" of the checkboxes
-      val options_var_name = "options_"+uuid
+        val options_var_name = "options_"+uuid
         val datas_var_name = "datas_"+uuid    //note: even though it looks like an array it isn't. Is a JavaScript object
         val show_toggle =    "show_toggle_"+uuid
 
@@ -126,7 +126,7 @@ trait FlotCharts {
         ).cmd)
       }
 
-      val legend_checkbox_client_side =   <label > <input checked="checked" type="checkbox" onclick={ "onLgndClick_" +  uuid + "(this.checked)"} />
+      lazy val legend_checkbox_client_side =   <label > <input checked="checked" type="checkbox" onclick={ "onLgndClick_" +  uuid + "(this.checked)"} />
         Legend </label>
 
       checkBoxSpanId match{
