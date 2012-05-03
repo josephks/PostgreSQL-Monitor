@@ -96,7 +96,12 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
     //todo: share this. There is no reason to do this every time the status page is loaded
     val showBlkszSql = "show block_size;"
 
-    Common.getData(showBlkszSql) match{
+    (defaultHtml \ "@db").text match {
+      case "" =>
+      case dbname => dbConn = dbname
+    }
+
+    Common.getDataFromConnection(showBlkszSql, dbConn) match{
       case Right( (keys, List(List(bs))) ) =>
         block_size = bs.asInstanceOf[String].toInt
         case Left(errstr) =>
@@ -104,11 +109,7 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
       case x  =>
         logger.error("code bug: block size query returned: " +x)
     }
-    (defaultHtml \ "@db").text match {
-      case "" =>
-      case dbname => dbConn = dbname
-    }
-    logger.info("defaultHtml is: "+defaultHtml)
+    logger.debug("defaultHtml is: "+defaultHtml)
   }
   //called from render, below.
   //Handle the node with class bwgraph.  If it has a <div class="flotchart"  /> in it use that for the flot chart, otherwise use the node itself.
@@ -134,7 +135,7 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
 
   /** Return an error string, if any */
   private def setDataPoint: Option[String] = {
-    Common.getData(sql) match{
+    Common.getDataFromConnection(sql, dbConn) match{
       case Right( (keys, oaa) ) =>
         prevDataPoint = lastDataPoint
         lastDataPoint = new BwDataPoint(oaa(0), block_size)
