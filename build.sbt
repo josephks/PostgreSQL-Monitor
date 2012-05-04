@@ -1,7 +1,7 @@
 /** Project */
 name := "PostgreSQL Monitor"
 
-version := "0.1-SNAPSHOT"
+version := "0.1"
 
 organization := "net.tupari"
 
