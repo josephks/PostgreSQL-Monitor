@@ -14,6 +14,9 @@ import net.tupari.pgmon.lib.{TableCreator, ConnectionData}
 
 
 /**
+ * Comet actor for monitoring the health of a Postgres primary to secondary sync.
+ * NOTE: right now only works for installations with one secondary.
+ * 
  * Created by IntelliJ IDEA.
  * User: jks
  * Date: 3/13/12
@@ -114,7 +117,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
         //see  https://issues.scala-lang.org/browse/SI-5574
         primaryFut.apply() match{
         case Right( (keys, oaa) ) =>
-          map ++=   keys.zip(oaa(0)).toMap //todo: fix, find data row for this secondary based on ip address and port
+          map ++=   keys.zip(oaa(0)).toMap //todo: fix, find data row for this secondary based on ip address and port.  This just works for installations with one secondary
 
         case Left(errstr) =>
           logger.error(errstr)
