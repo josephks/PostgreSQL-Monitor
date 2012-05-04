@@ -18,35 +18,39 @@ import net.tupari.lib.{SimpFactory }
     import net.tupari.pgmon.lib.Implicits._
 
 /**
+ * Mix in to comet actors to use. Encapsulates logic for a simple Flot chart (wraps the Lift Flot widget).
+ *
  * Created with IntelliJ IDEA.
  * User: jks
  * Date: 5/2/12
  * Time: 3:11 PM
- * To change this template use File | Settings | File Templates.
  */
 trait FlotCharts {
 
   this: CometActor with UpdateableSpans =>
 
   class FlotChart(origHtml: scala.xml.Elem, dataLabels: List[String], lineColors: List[String]){
+    private val DEFAULT_INTERVALS = 100
 
     class MyFlotSerie(val lbl: String, val _color: String) extends  net.liftweb.widgets.flot.FlotSerie{
       override def label: Box[String] = Full(lbl)
       override def color: Box[Either[String, Int]] = Full(Left(_color) )
     }
 
-
     var checkBoxSpanId: Option[String] = None
+    /** Element id of the html element being used for the flot chart */
     val uuid = "flotspan"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
+
+
     //html2 is original with checkboxes div replaced
     private val html2 = XmlUtil.toElem( (".checkboxes" #> ((checkboxDiv: scala.xml.NodeSeq) ⇒ {
       val ans = new UpdateableSpan("cbx"+SimpFactory.inject[ SimpFactory.UniqueNumber].get)
       checkBoxSpanId = Some(ans.uuid)
       ans.getSpan(Text(""))
     })).apply(origHtml) )
-    private val DEFAULT_INTERVALS = 100
-    //html3 is html2, with the class of root possibly set to "flotchart"
-    //flot_chart is the Elem that houses the actual chart
+    //html3 is html2, with the class attribute of the root possibly set to "flotchart" (if no child was so designated we use the top level as one)
+    //flot_span is the Elem that houses the actual chart
+    //timepoints is the number of datapoints we keep on the chart before scrolling old ones off as new ones replace them
     private val (html3, flot_span, timepoints) = html2.searchForNodeWithAttrib( "class" -> "flotchart") match {
       case Some(chartnode) => (html2, //unchanged
         chartnode,
@@ -88,7 +92,8 @@ trait FlotCharts {
       partialUpdate(SetHtml(uuid, flot_widget_rendered ))
       //now create the checkboxes.  Can't be created until data_lines is created
 
-      val USE_CLIENT_SIDE = true //use client side javascript alternative
+      val USE_CLIENT_SIDE = true //Use client side javascript alternative.
+      //I'm keeping the server side code around in case some future change to the flot widget breaks the client side code here
 
       lazy val legend_checkbox_server_side =  <label> {SHtml.ajaxCheckbox (true, { (b: Boolean) =>
         val newOptions = new MyFlotOptions{ override def legend = Full(new FlotLegendOptions{ override def show = Full(b)})}
@@ -101,7 +106,7 @@ trait FlotCharts {
 
       if (USE_CLIENT_SIDE){ //If using client side alternatives declare functions to be used in the onclick="" of the checkboxes
         val options_var_name = "options_"+uuid
-        val datas_var_name = "datas_"+uuid    //note: even though it looks like an array it isn't. Is a JavaScript object
+        val datas_var_name = "datas_"+uuid
         val show_toggle =    "show_toggle_"+uuid
 
         partialUpdate(net.liftweb.http.js.JE.JsRaw(
@@ -126,19 +131,18 @@ trait FlotCharts {
         ).cmd)
       }
 
-      lazy val legend_checkbox_client_side =   <label > <input checked="checked" type="checkbox" onclick={ "onLgndClick_" +  uuid + "(this.checked)"} />
-        Legend </label>
+      lazy val legend_checkbox_client_side =   <label> <input checked="checked" type="checkbox" onclick={ "onLgndClick_" +  uuid + "(this.checked)"} /> Legend </label>
 
       checkBoxSpanId match{
         case None =>
         case Some(cbx_id) =>
           partialUpdate(SetHtml(cbx_id, XmlUtil.joinNodeSeqs(
-            //join a list of one item (legend toggle checkbox) with a list of checkboxes created from memops
+            //join a list of one item (legend toggle checkbox) with a list of checkboxes created from dataLabels
             List(if (USE_CLIENT_SIDE){ legend_checkbox_client_side }else{ legend_checkbox_server_side }) ++
               dataLabels.zipWithIndex.map{case (name, idx) =>
                 if (USE_CLIENT_SIDE){
-                  <label > <input checked="checked" type="checkbox" onclick={"onMemOpClick_" +  uuid + "(this.checked, " + idx+")"} />
-                    { name} </label>
+                  <label> <input checked="checked" type="checkbox" onclick={"onMemOpClick_" +  uuid + "(this.checked, " + idx+")"} />
+                    { name } </label>
                 } else { //use original server side method
                   <label> {
                     SHtml.ajaxCheckbox (true, { (b: Boolean) =>
