@@ -43,8 +43,6 @@ min-width:100px;
 <h3>Bandwith</h3>
 <div lift="comet?type=PgBandwithActor">
 
-                        <div id="#dummyflotchart"  style="hidden:true"></div>
-                                         <script language="javascript" type="text/javascript" src="/classpath/flot/jquery.flot.resize.js" />
 
  <table class="bpstable"><tbody><tr> <th>Read bps</th>
 <th>Total Write Bps</th>
@@ -60,9 +58,12 @@ min-width:100px;
 <td><div class="timenow" /></td>
 </tr> </tbody>   </table>
 
- <!--script language="javascript" type="text/javascript" src="http://people.iola.dk/olau/flot/jquery.flot.resize.js" /-->
-             <div class="bwgraph" style="width:100%;height:200px;"></div>
-               <div class="bwgraph" style="width:100%;height:200px;" intervals="100"></div>
+
+
+     <div class="bwgraph"> <div class="flotchart" style="width:100%;height:200px;" intervals="100"></div><div class="checkboxes" /></div>
+
+      <div class="bwgraph"> <div class="flotchart" style="width:100%;height:200px;" intervals="1000"></div><div class="checkboxes" /></div>
+
 
 </div>
 
