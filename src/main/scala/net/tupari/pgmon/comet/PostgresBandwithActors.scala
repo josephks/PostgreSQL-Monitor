@@ -36,6 +36,8 @@ class BwDataPoint(oa: List[Any], block_size: Int, val baseline: Boolean = false)
 
 class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable with FlotCharts with UpdateableSpans{
 
+  override protected def dontCacheRendering: Boolean = true
+
   val idBase = "pgbw"+SimpFactory.inject[ SimpFactory.UniqueNumber].get
   private var dbConn: ConnectionIdentifier = DefaultConnectionIdentifier
 
@@ -47,13 +49,6 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
   private var lastDataPoint:BwDataPoint = null
 
   private var spanList:List[Dataspan] = Nil
-  
-   class UpdateableSpan(val uuid: String){
-    def getSpan(node: scala.xml.Node): scala.xml.Elem = <span id={ uuid } >{ node }</span>
-    def getSpan: scala.xml.Elem = getSpan(Text("..."))//return a placeholder span to be inserted into html on doc creation
-    def setHtml(node: scala.xml.Node)  = partialUpdate(SetHtml(uuid, node))
-    def setHtml(text: String)  = partialUpdate(SetHtml(uuid, <div>{ text }</div>))
-  }
 
   private sealed abstract class Dataspan(myIdBase: String){
     //seems hackish to me, to save a reference to myself in the constructor
