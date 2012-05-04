@@ -34,13 +34,18 @@ object MyBuild extends Build{
       "org.specs2" %% "specs2-scalaz-core" % "6.0.1" % "test"
 
 
-      //  "org.scala-tools.testing" %% "scalacheck" % "1.9", 
+      //  "org.scala-tools.testing" %% "scalacheck" % "1.9",
       //  "org.scala-tools.testing" % "test-interface" % "0.5", 
       //  "org.hamcrest" % "hamcrest-all" % "1.1",
       //  "org.mockito" % "mockito-all" % "1.8.5",
     )   ,
      resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"  ,
 
+   //see http://stackoverflow.com/questions/7819066/sbt-exclude-class-from-jar
+     mappings in (Compile,packageBin) ~= { (ms: Seq[(File, String)]) =>
+       ms filter { case (file, toPath) => ! toPath.endsWith("default.props") }
+     }
+     ,
      publishTo <<= (version) { version: String =>
        Some(Resolver.file("file",  Path.userHome / "work/josephks.github.com/maven-repo" / {
          if  (version.trim.endsWith("SNAPSHOT"))  "snapshots"
@@ -49,9 +54,10 @@ object MyBuild extends Build{
      //Instead of putting "seq(webSettings :_*)" into build.sbt appending settings here
    ) ++  com.github.siasia.WebPlugin.webSettings
      ++ Seq (
-     publishArtifact in (Compile, packageBin) := true,
-     publishArtifact in Test := false,
-     publishArtifact in com.github.siasia.PluginKeys.packageWar := false)
+     publishArtifact in (Compile, packageBin) := true ,
+     publishArtifact in Test := false ,
+     publishArtifact in com.github.siasia.PluginKeys.packageWar := false   //doesn't work, war is still generated
+   )
      ).toArray: _* )
 
 }
