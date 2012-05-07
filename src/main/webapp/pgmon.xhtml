@@ -48,7 +48,7 @@ min-width:100px;
 
 
 <h3>Bandwith</h3>
-<div lift="comet?type=PgBandwithActor">
+<div lift="comet?type=PgBandwithActor&amp;randomname=true">
 
  <table class="bpstable"><tbody><tr> <th>Read bps</th>
 <th>Total Write Bps</th>
@@ -67,7 +67,8 @@ min-width:100px;
 
 
 
-<div lift="comet?type=PgMonCometBackendsActor">
+<div lift="comet?type=PgMonCometBackendsActor&amp;randomname=true">
+    <!-- Curently this isn't customizable. You have to live with the tables as generated. -->
 <h3>Postgres backends</h3>
     <div class="reloadbox"></div> autorefresh
     <table class="backendstbl" ></table>
