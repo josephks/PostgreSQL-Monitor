@@ -13,7 +13,20 @@
         <p>
             Your database encoding is:   <code> <span class="lift:BasicInfo.dbencoding"></span></code>
         </p>
+            <hr />
+        <p>The default distribution of the PostgresQL Monitor includes .xhtml files that can be customized
+            for your installation.</p>
+        <ul>Included web page templates:
+          <li>  <a href="pgmon">General</a> - includes current queries, bandwith on primary, slony status
+           </li><li> <a href="pgbw">Bandwith on the primary</a>
+          </li><li>  <a href="pgbw2">Bandwith on primary and secondary side by side</a>  (secondary db name needs customizing)
+          </li><li>  <a href="pgsize">Database size</a>
+          </li><li>  <a href="all_secondaries">Secondary status</a> - monitor your secondary database (that is replicated through wal shipping)
+            </li>
+        </ul>
+
     </div>
+
   </body>
 </html>
 
