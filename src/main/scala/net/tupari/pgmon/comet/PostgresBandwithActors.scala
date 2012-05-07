@@ -110,12 +110,16 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
   //Handle the node with class bwgraph.  If it has a <div class="flotchart"  /> in it use that for the flot chart, otherwise use the node itself.
   private def getFlotChartXml(outerdiv: scala.xml.NodeSeq):scala.xml.NodeSeq = {
     val holder = new FlotChartHolder(XmlUtil.toElem(outerdiv))
-       flotChartHolders = holder ::  flotChartHolders
+    flotChartHolders = holder ::  flotChartHolders
     holder.flotChart.getSpan
   }
 
   def render = {
-    logger.trace("render() called dbconn="+dbConn)
+    logger.info("render() called dbconn="+dbConn)
+    //I don't know why but for some reason render is being called twice. This resulted in duplicate internal nodes stored
+    //in spanList and flotChartHolders.  As a workaround reset the variables to Nil at the start of each render call
+    spanList = Nil
+    flotChartHolders = Nil
     ".totalreadbps" #> new ReadBps().getSpan &  
     ".totalwritebps" #> new WriteBps().getSpan &  
     ".checkpointwritebps" #> new CheckpointWriteBps().getSpan &  
