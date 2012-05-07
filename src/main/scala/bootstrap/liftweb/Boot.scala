@@ -24,6 +24,9 @@ import java.net.URL
 class Boot extends LazyLoggable{
   def boot {
     logger.info("Boot starting!")
+    //Leave remmed out unless needed.  Otherwise might leak passwords into the log file
+    //logger.info("Props: "+Props.props+" from file " + Props.propFileName+" totry: " + Props.toTry.map(_.apply()) )
+
 
     // where to search snippet
     LiftRules.addToPackages("net.tupari.pgmon")
@@ -80,8 +83,17 @@ class Boot extends LazyLoggable{
     //private method for getting db vendors
     def getDbVendor(url: String, user: Box[String], passwd: Box[String]): mapper.StandardDBVendor = {
       //Creator a vendor class that extends StandardDBVendor.
+      //Lift has this weird thing that if the user is set but the passwd isn't it won't use the user
+      //If user is a Full but passwd isn't set passwd to be Full("")
+      val passwd_to_use = passwd match{
+        case Full(_) => passwd
+        case _ => user match{
+          case Full(_) => Full("")
+          case _ =>  passwd
+        }
+      }
       new StandardDBVendor(Props.get("db.driver") openOr "org.postgresql.Driver",
-        url, user, passwd) {
+        url, user, passwd_to_use) {
         override def createOne: Box[java.sql.Connection] = {
           val ans = super.createOne
           ans match {
