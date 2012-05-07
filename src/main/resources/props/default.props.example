@@ -1,0 +1,9 @@
+db.class=org.postgresql.Driver
+#standard db connection properties
+db.url=jdbc:postgresql://localhost/jks
+db.user=jks
+
+#configure the secondary database connection(s)
+secondary.database.names=pg2
+db.pg2.url=jdbc:postgresql://otherhost/jks
+db.pg2.user=jks
