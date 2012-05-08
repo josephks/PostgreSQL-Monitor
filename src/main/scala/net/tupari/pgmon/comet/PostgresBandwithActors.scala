@@ -114,13 +114,15 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
     holder.flotChart.getSpan
   }
 
-  def render = {
-    logger.info("render() called dbconn="+dbConn)
+  private lazy val renderOnce = {
+    logger.debug("renderOnce() called dbconn="+dbConn)
     //I don't know why but for some reason render is being called twice. This resulted in duplicate internal nodes stored
     //in spanList and flotChartHolders.  As a workaround reset the variables to Nil at the start of each render call
-    spanList = Nil
-    flotChartHolders = Nil
-    ".totalreadbps" #> new ReadBps().getSpan &  
+    //    spanList = Nil
+    //    flotChartHolders = Nil
+    //Update: as a better workaround apply the csstransform to defaultHtml ourselves, then store the result
+    //in a lazy val which render() will return
+    (".totalreadbps" #> new ReadBps().getSpan &
     ".totalwritebps" #> new WriteBps().getSpan &  
     ".checkpointwritebps" #> new CheckpointWriteBps().getSpan &  
     ".cleanwritebps" #> new CleaningWriteBps().getSpan &  
@@ -129,8 +131,9 @@ class PgBandwithActor  extends CometActor with net.liftweb.common.LazyLoggable w
     ".cssrtest" #> <span>cssrtest</span> &
     ".bwgraph"  #> { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
       getFlotChartXml(node)
-    }  }
+    }  } ).apply(defaultHtml)
   }
+  def render = renderOnce
 
   /** Return an error string, if any */
   private def setDataPoint: Option[String] = {
