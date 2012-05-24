@@ -19,8 +19,8 @@ class PgMonCometSlonyStatusActor  extends CometActor with Logger{
 
   private val slonySql = "select schemaname from pg_tables where tablename = 'sl_log_1'"
   private var sqlUsed = ""
-  private var tableId = "slonytable"
-  private var sqlSpanId = "slonysqlspan"
+  private var tableId = "slonytable" + SimpFactory.inject[SimpFactory.UniqueNumber].get
+  private var sqlSpanId = "slonysqlspan"  + SimpFactory.inject[SimpFactory.UniqueNumber].get
   private var refreshOn = false
 
   override protected def dontCacheRendering: Boolean = true
@@ -73,12 +73,12 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
   override protected def dontCacheRendering: Boolean = true
 
 
-  def render = {
-    debug("render called")
+  private lazy val renderOnce = {
+    debug("renderOnce called")
 
-    ".backendstbl" #> <table  > <tbody id={ tableId }>{ getTableContents } </tbody></table> &
+    ".backendstbl" #> <table> <tbody id={ tableId }>{ getTableContents } </tbody></table> &
       ".backendssql" #> <span>{ backendsSql } </span> &
-      ".lockstbl" #>  <table > <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>  &
+      ".lockstbl" #>  <table> <tbody id={ lockTableId } >{ getLocksTableContents }</tbody>  </table>  &
       ".lockssql" #>   <span>{ locksSql } </span> &
       ".freshnessdate" #> { hasDate = true ;  <span id={ dateSpanId } /> } &
       ".reloadbox" #>   SHtml.ajaxCheckbox (false, { (b: Boolean) =>
@@ -86,6 +86,7 @@ class PgMonCometBackendsActor  extends CometActor with Logger{
         if (b) this ! "update"
       })
   }
+  def render = renderOnce
 
   private val RUNNING_TIME = "running_time"
 
