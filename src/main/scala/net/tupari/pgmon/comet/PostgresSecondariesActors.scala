@@ -131,13 +131,7 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
 
   private var secondaryMonitorList:List[SecondaryMonitor] = Nil
 
-  def render = {
-    val ans = render0
-    logger.debug("render returing "+ans)
-    Schedule.schedule(this, "update", 1000L)
-    ans
-  }
-  def render0 = {
+  private def render0 = {
     logger.debug("render() called primary="+primary)
     ".reptable" #>  { (node: scala.xml.NodeSeq) => {    //css selector of type Node => Node
       val ans = new SecondaryMonitor( node )
@@ -145,6 +139,13 @@ class PgSecondaryActor extends CometActor with net.liftweb.common.LazyLoggable{
       ans.getSpan
     }   }
   }
+  private lazy val renderOnce = {
+    val ans = render0
+    logger.debug("renderOnce returing "+ans)
+    Schedule.schedule(this, "update", 1000L)
+    ans
+  }
+  def render = renderOnce
 
   private def doUpdate() {
     logger.debug("doUpdate starting")
